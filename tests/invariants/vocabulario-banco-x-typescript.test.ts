@@ -502,6 +502,17 @@ const PARES: Array<{
     arquivo: "lib/campanhas/tipos.ts",
     simbolo: "STATUS_DO_DESTINATARIO",
   },
+  {
+    tabela: "message_templates",
+    coluna: "tipo",
+    // lib/inbox/recursos.ts → TIPOS_DE_RECURSO (tupla `as const`). Nasce no
+    // MESMO commit da migration 0655 (#2833): o recurso de TEXTO cai no campo
+    // editável do Inbox e o de ÁUDIO vira anexo pendente; um tipo só no CHECK
+    // viraria recurso que o compositor não sabe inserir, e só no TypeScript
+    // viraria `23514` num INSERT da tela de recursos.
+    arquivo: "lib/inbox/recursos.ts",
+    simbolo: "TIPOS_DE_RECURSO",
+  },
 ];
 
 /** Tira um nível de parênteses externos, se ele envolver a expressão inteira. */
