@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 const COLS =
   "id, organization_id, owner_user_id, title, body, shortcut, tipo, media_path, media_mime, media_size_bytes, created_by_user_id, created_at, updated_at";
 
-/** Bucket dos arquivos de recurso (migration 0655). Espelha o `create table` do baseline. */
+/** Bucket dos arquivos de recurso (migration 0660). Espelha o `create table` do baseline. */
 const BUCKET_DE_RECURSOS = "recursos-media";
 /** TTL curto: o compositor assina na hora do clique e envia logo depois. */
 const VALIDADE_DA_ASSINATURA_S = 600;

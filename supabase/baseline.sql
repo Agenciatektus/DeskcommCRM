@@ -7566,7 +7566,7 @@ create policy "message_templates_write" on message_templates
     )
   );
 
--- ---- recursos pré-prontos: tipo + mídia (migration 0655) ----
+-- ---- recursos pré-prontos: tipo + mídia (migration 0660) ----
 alter table message_templates
   add column if not exists tipo text not null default 'texto',
   add column if not exists media_path text,

@@ -9,7 +9,7 @@
  * quem manda é sempre um clique humano, separado.
  *
  * Reusa `message_templates` (o mesmo caminho de dados das respostas rápidas),
- * estendido com `tipo` e os campos de mídia pela migration 0655.
+ * estendido com `tipo` e os campos de mídia pela migration 0660.
  */
 import { interpolateTemplate, type TemplateContact } from "@/lib/inbox/template-vars";
 

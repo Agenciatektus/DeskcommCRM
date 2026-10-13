@@ -10,7 +10,7 @@ export interface MessageTemplate {
   body: string;
   shortcut: string | null;
   owner_user_id: string | null;
-  /** "texto" ou "audio" (migration 0655). */
+  /** "texto" ou "audio" (migration 0660). */
   tipo: TipoDeRecurso;
   /** Caminho do arquivo no Storage — só para recursos de áudio. */
   media_path: string | null;
