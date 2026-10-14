@@ -17,7 +17,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
-/** Bucket dos arquivos de recurso (migration 0660). */
+/** Bucket dos arquivos de recurso (migration 0662). */
 const BUCKET_DE_RECURSOS = "recursos-media";
 
 export async function POST(req: NextRequest): Promise<Response> {
