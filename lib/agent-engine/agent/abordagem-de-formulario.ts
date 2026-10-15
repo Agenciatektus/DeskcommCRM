@@ -48,8 +48,9 @@ export interface AbordagemDeFormularioInput {
   tenantId: string;
   /** Agente PUBLICADO que assina a mensagem. */
   agentId: string;
-  /** Contato destinatário — `leadId` no vocabulário do seam (é o contact_id). */
-  leadId: string;
+  /** Contato destinatário — `leadId` no vocabulário do seam (é o contact_id;
+   * nulo quando o candidato ainda não virou contato — a prévia não grava rastro de contato). */
+  leadId: string | null;
   /** O que o dono do negócio quer que seja feito com os dados. */
   instrucao: string;
   /** Nome da fonte/origem, quando houver ("Landing de setembro"). */

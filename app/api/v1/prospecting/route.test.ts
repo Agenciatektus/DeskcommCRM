@@ -11,6 +11,7 @@ const deps = vi.hoisted(() => ({
   checkRateLimit: vi.fn(),
   pool: vi.fn(),
   activate: vi.fn(),
+  generate: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
@@ -31,8 +32,14 @@ vi.mock("@/lib/prospecting/store", () => ({
   validateConfig: vi.fn(),
   withProspectingLock: vi.fn(),
 }));
+vi.mock("@/lib/agent-engine/agent/abordagem-de-formulario", () => ({
+  gerarAbordagemDeFormulario: deps.generate,
+}));
 
 import { POST } from "./route";
+import { gerarAbordagemDeFormulario } from "@/lib/agent-engine/agent/abordagem-de-formulario";
+import { requireRole } from "@/lib/auth/require-role";
+import { audit } from "@/lib/audit";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 
@@ -82,5 +89,115 @@ describe("POST /api/v1/prospecting por token", () => {
   it("pause segue aberto ao token", async () => {
     const res = await POST(tokenPost({ action: "pause", id: ID }));
     expect(res.status).toBe(200);
+  });
+});
+
+describe("POST /api/v1/prospecting prever_abordagem sem contato", () => {
+  const ORG = "99999999-9999-4999-8999-999999999999";
+  const CAMPANHA = "22222222-2222-4222-8222-222222222222";
+  const CANDIDATO = "33333333-3333-4333-8333-333333333333";
+  const CONTATO = "44444444-4444-4434-8434-444444444444";
+  const AGENTE = "55555555-5555-4555-8555-555555555555";
+
+  const CONFIG = {
+    agent_id: AGENTE,
+    channel_session_id: "66666666-6666-4666-8666-666666666666",
+    pipeline_id: "77777777-7777-4777-8777-777777777777",
+    stage_id: "88888888-8888-4888-8888-888888888888",
+    qualified_stage_id: "99999999-9999-4999-8999-999999999998",
+    instruction: "Apresente a clínica com educação.",
+    qualification: "Tem interesse em agendar avaliação.",
+    daily_limit: 10,
+    interval_minutes: 15,
+    legal_basis_ref: "legítimo interesse, registro 1",
+  };
+
+  const SITE_OK = {
+    ver: 1,
+    classe: "site-ok",
+    problemas: [],
+    checklist: { tem: ["tel"], falta: [] },
+    final_url: "https://vitta.test/",
+    http_status: 200,
+    tempo_ms: 300,
+    conteudo_resumo: null,
+    pagespeed: null,
+    verificado_em: "2026-10-10T12:00:00.000Z",
+    provisorio: false,
+    tentativas: 0,
+  };
+
+  function linhaDoCandidato(contact_id: string | null) {
+    return {
+      id: CANDIDATO,
+      data: {
+        name: "Clínica Vitta",
+        category: "Estética",
+        address: "Rua X",
+        website: "https://vitta.test/",
+        rating: 4.8,
+        reviews: 120,
+        emails: [],
+        socials: [],
+        site: SITE_OK,
+      },
+      status: "queued",
+      contact_id,
+      config: CONFIG,
+      search: { niche: "clínica" },
+    };
+  }
+
+  function previaSessao(candidate_id: string) {
+    return new NextRequest("http://localhost/api/v1/prospecting", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "prever_abordagem", id: CAMPANHA, candidate_id }),
+    });
+  }
+
+  beforeEach(() => {
+    vi.mocked(requireRole).mockResolvedValue({
+      ok: true,
+      user: { id: "u-1", idioma: "pt" },
+      org: { orgId: ORG },
+    } as never);
+    deps.generate.mockResolvedValue({ ok: true, texto: "Olá! Vi o site de vocês." });
+  });
+
+  it("caso A: sem contato, leadId é null (nunca o id do candidato)", async () => {
+    deps.pool.mockReturnValue({
+      query: async (sql: string) =>
+        sql.includes("from prospecting_candidates")
+          ? { rows: [linhaDoCandidato(null)] }
+          : { rows: [] },
+    });
+    const res = await POST(previaSessao(CANDIDATO));
+    expect(res.status).toBe(200);
+    expect(vi.mocked(gerarAbordagemDeFormulario)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ leadId: null }),
+    );
+    const chamada = vi.mocked(gerarAbordagemDeFormulario).mock.calls[0]![2] as { leadId: unknown };
+    expect(chamada.leadId).not.toBe(CANDIDATO);
+    expect(chamada.leadId).toBeNull();
+    expect(vi.mocked(audit)).not.toHaveBeenCalled();
+  });
+
+  it("caso B: com contato, leadId é o contact_id", async () => {
+    deps.pool.mockReturnValue({
+      query: async (sql: string) =>
+        sql.includes("from prospecting_candidates")
+          ? { rows: [linhaDoCandidato(CONTATO)] }
+          : { rows: [] },
+    });
+    const res = await POST(previaSessao(CANDIDATO));
+    expect(res.status).toBe(200);
+    expect(vi.mocked(gerarAbordagemDeFormulario)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ leadId: CONTATO }),
+    );
   });
 });

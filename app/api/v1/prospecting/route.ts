@@ -297,7 +297,7 @@ export async function POST(req: NextRequest) {
       const gerado = await gerarAbordagemDeFormulario(pool, llmEdgeConfigFromEnv(env), {
         tenantId: org,
         agentId: cfg.agent_id,
-        leadId: linha.contact_id ?? linha.id,
+        leadId: linha.contact_id ?? null,
         instrucao: instrucaoDeAbordagemFria(
           cfg.instruction,
           cfg.qualification,
