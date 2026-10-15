@@ -51,6 +51,9 @@ export async function enriquecerSitesPendentes(
         "from prospecting_candidates " +
         "where organization_id=$1 " +
         "and nullif(trim(data->>'website'), '') is not null " +
+        // Desmarcado na preparação fica de fora: ele não vai ser abordado, e a
+        // auditoria é para decidir QUEM abordar (retorna ao marcar de novo).
+        "and selected is not false " +
         "and (data->'site' is null or (coalesce((data->'site'->>'provisorio')::boolean, false) " +
         "and coalesce(nullif(data->'site'->>'tentativas', '')::int, 0) < $3 " +
         "and coalesce(nullif(data->'site'->>'verificado_em','')::timestamptz, 'epoch'::timestamptz) <= now() - make_interval(mins => $4))) " +

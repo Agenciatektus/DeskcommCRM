@@ -98,7 +98,7 @@ export function AuditoriaDoSite({
           </div>
         </div>
       )}
-      <div className="text-xs">
+      <div className="text-xs leading-relaxed">
         <h4 className="font-medium">{t("Estratégia de abordagem")}</h4>
         <p className="mt-1">{estrategia.cenario}</p>
         <p className="mt-1 text-muted-foreground">{estrategia.angulo}</p>
@@ -112,7 +112,7 @@ export function AuditoriaDoSite({
         {estrategia.objecoes.length > 0 && (
           <div className="mt-2">
             <h5 className="text-muted-foreground">{t("Objeções e respostas")}</h5>
-            <ul className="mt-1 space-y-1">
+            <ul className="mt-1 space-y-2">
               {estrategia.objecoes.map((o) => (
                 <li key={o.objecao}>
                   <span className="font-medium">“{o.objecao}”</span>

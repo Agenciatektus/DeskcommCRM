@@ -71,8 +71,11 @@ export function AuditoriaDoCandidato({
   }
   const temInstagram = /instagram/i.test((data.socials ?? []).join(","));
   const score = pontuarCandidato(data.rating, data.reviews, site.classe, ofertas[0] ?? "site", site.provisorio ?? false);
-  // Resumo de UMA linha: classe + até 2 problemas. O resto mora no modal.
-  const veredito = [rotuloDaClasse(site.classe, t), ...site.problemas.slice(0, 2).map(descreverProblema)].join(" · ");
+  // Resumo de UMA linha: classe + até 2 problemas. O motivo do score acompanha
+  // só quando diz algo além do veredito (senão "sem site próprio" repete).
+  const rotulo = rotuloDaClasse(site.classe, t);
+  const veredito = [rotulo, ...site.problemas.slice(0, 2).map(descreverProblema)].join(" · ");
+  const mostraMotivo = score.motivo !== rotulo && score.motivo.toLowerCase() !== rotulo.toLowerCase();
   const auditoria = (
     <AuditoriaDoSite
       site={site}
@@ -91,9 +94,11 @@ export function AuditoriaDoCandidato({
         <Badge variant="outline">
           Score {score.valor}
         </Badge>
-        <span className="text-xs text-muted-foreground" title={score.motivo}>
-          {score.motivo}
-        </span>
+        {mostraMotivo && (
+          <span className="text-xs text-muted-foreground" title={score.motivo}>
+            {score.motivo}
+          </span>
+        )}
       </div>
       <p className="truncate text-xs" title={veredito}>
         {veredito}
@@ -115,7 +120,7 @@ export function AuditoriaDoCandidato({
             <DialogTitle>{t("Auditoria do site")}</DialogTitle>
             <DialogDescription>{data.name}</DialogDescription>
           </DialogHeader>
-          {auditoria}
+          <div className="space-y-4 text-sm leading-relaxed">{auditoria}</div>
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -142,7 +147,7 @@ export function AuditoriaDoCandidato({
             </Button>
           </div>
           {previa && (
-            <div className="rounded-md border p-3 text-xs">
+            <div className="rounded-md border p-3 text-xs leading-relaxed">
               <p className="whitespace-pre-wrap">{previa.mensagem}</p>
             </div>
           )}

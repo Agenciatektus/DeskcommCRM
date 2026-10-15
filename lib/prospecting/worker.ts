@@ -23,12 +23,7 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { assertProspectingDelivery } from "./guard";
 import { instrucaoDeAbordagemFria, montarDadosDeAbordagem } from "./estrategia-site";
-import {
-  INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN,
-  LIMITE_TENTATIVAS,
-} from "./site-fetch";
 import { blocoVozVendedor, personalizacaoDaOrganizacao } from "./personalizar";
-import { enriquecerSitesPendentes } from "./site-enrich";
 import { campaignConfigSchema } from "./schema";
 import { ProspectingError } from "./provider";
 import { OrgNaoOperanteError } from "@/lib/organizacao/operante";
@@ -374,28 +369,20 @@ export async function sendNextCandidate(
   }
 }
 
-export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, requestId?: string) {
+export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, _requestId?: string) {
   // Organização parada (suspensa, redigida, arquivada) não prospecta: a busca é
   // paga e a abordagem sai para fora. O corte é no SQL, antes do `limit 20`:
   // a ordem é `min(updated_at)`, e a org pulada nunca toca `updated_at` —
   // filtrar depois a deixaria no topo para sempre. A régua é a SQL
   // `fn_org_operante` (mesma de `organizations.status = 'active'`) — não se
   // trafega a lista de ids das paradas na consulta (cortaria em `max_rows`).
-  // A auditoria decide QUEM abordar, então ela vem ANTES do envio: org ociosa
-  // (draft/pausada/concluída) com enriquecimento pendente entra para a rodada
-  // de leitura — sem ela, "A verificar" nunca vira veredito até alguém iniciar.
+  // A auditoria de site NÃO roda mais por aqui: com 100+ leads ela segurava o
+  // lock por minutos (409 na tela) e gastava rede sem ninguém olhando. Quem
+  // dispara é a pessoa, pelo botão "Verificar sites" (ação `verificar_sites`).
   const { rows: organizations } = await pool.query<{ organization_id: string }>(
-    "select pc.organization_id from prospecting_campaigns pc where (pc.status='running' or pc.search_status in ('starting','running') " +
-      "or exists (select 1 from prospecting_candidates pend where pend.organization_id=pc.organization_id " +
-      "and nullif(trim(pend.data->>'website'), '') is not null " +
-      "and (pend.data->'site' is null or (coalesce((pend.data->'site'->>'provisorio')::boolean, false) " +
-      "and coalesce(nullif(pend.data->'site'->>'tentativas', '')::int, 0) < $1 " +
-      "and coalesce(nullif(pend.data->'site'->>'verificado_em','')::timestamptz, 'epoch'::timestamptz) <= now() - make_interval(mins => $2))))) " +
-      "and public.fn_org_operante(pc.organization_id) group by pc.organization_id order by min(pc.updated_at) limit 20",
-    [LIMITE_TENTATIVAS, INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN],
+    "select pc.organization_id from prospecting_campaigns pc where (pc.status='running' or pc.search_status in ('starting','running')) and public.fn_org_operante(pc.organization_id) group by pc.organization_id order by min(pc.updated_at) limit 20",
   );
   const deadline = Date.now() + 180000;
-  const tickId = requestId ?? `prospecting:tick:${Date.now()}`;
   let processed = 0;
   for (const { organization_id: org } of organizations) {
     if (Date.now() >= deadline) break;
@@ -431,9 +418,8 @@ export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, requ
             );
           }
         }
-        // Enriquecimento de sites (spec 24): depois da busca materializar e
-        // antes do envio consumir quota/LLM. Nunca lança (fail-open).
-        await enriquecerSitesPendentes(db, org, tickId, deadline);
+        // (A auditoria de site saiu daqui: ver `verificar_sites` na rota —
+        // sob demanda, com teto de lote. O tick não faz fetch de site.)
         const c = (
           await db.query<Campaign>(
             "select * from prospecting_campaigns where organization_id=$1 and status='running'",

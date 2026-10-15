@@ -32,6 +32,7 @@ import {
   hostDeSite,
   MINIMO_CHARS_PAGINA_REAL,
   montarChecklist,
+  vereditoPuro,
   type ErroDeRede,
   type SiteEnrichment,
 } from "@/lib/prospecting/site-classify";
@@ -41,6 +42,12 @@ const MAX_REDIRECTS = 5;
 const MAX_BODY_BYTES = 200_000;
 const LIMITE_LENTO_MS = 5000;
 const MAX_CHARS_RESUMO = 1200;
+/**
+ * Prazo do LOTE de auditoria (todos os sites juntos). Um site pode pendurar
+ * mesmo com `AbortSignal.timeout` (medido na VPS: o tick ficou ~30 min
+ * segurando o lock). Quem não couber no prazo sai provisório e continua depois.
+ */
+export const PRAZO_DO_LOTE_MS = 60_000;
 const UA_NAVEGADOR =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
@@ -265,6 +272,12 @@ export async function auditarSite(
   verificar: VerificadorDeHost = verificadorPadrao,
   tentativasAnteriores = 0,
 ): Promise<SiteEnrichment> {
+  // Portão puro antes de qualquer rede: Instagram/WhatsApp/linktree e afins
+  // nunca foram site — as linhas antigas (de antes do veredito no insert)
+  // chegam aqui pelo tick e pela reanálise, e buscar URL de agregador além
+  // de desperdiçar fetch ainda rende veredito errado ("lento", "fora-do-ar").
+  const puro = vereditoPuro(url, agoraIso);
+  if (puro) return { ...puro, tentativas: tentativasAnteriores };
   const falha = (
     classe: SiteEnrichment["classe"],
     problemas: string[] = [],
@@ -376,6 +389,10 @@ export function deveReverificar(site: { provisorio: boolean; tentativas: number 
 /**
  * Roda N auditorias com paralelismo limitado, sem derrubar o lote por 1 falha
  * (cada item sempre resolve um veredito — nunca rejeita).
+ *
+ * O lote tem PRAZO: 1 site pendurado não pode segurar o lock por minutos
+ * (medido na VPS: o tick ficou ~30 min e a fila inteira respondia 409).
+ * Quem não couber no prazo sai provisório, e o próximo tick/rodada continua.
  */
 export async function auditarSites(
   urls: string[],
@@ -384,16 +401,46 @@ export async function auditarSites(
   fetchFn: typeof fetch = fetch,
   verificar: VerificadorDeHost = verificadorPadrao,
   tentativasAnteriores: number[] | number = 0,
+  prazoMs = PRAZO_DO_LOTE_MS,
 ): Promise<SiteEnrichment[]> {
   const saidas: SiteEnrichment[] = new Array(urls.length);
+  const abortadorDoLote = new AbortController();
+  const relogioDoLote = setTimeout(() => abortadorDoLote.abort(), prazoMs);
+  const anteriorDe = (i: number) =>
+    Array.isArray(tentativasAnteriores) ? (tentativasAnteriores[i] ?? 0) : tentativasAnteriores;
+  const provisorioDe = (i: number): SiteEnrichment => {
+    const anterior = anteriorDe(i);
+    return {
+      ver: 1, classe: "fora-do-ar", problemas: ["fora-do-ar"],
+      checklist: { tem: [], falta: [] }, final_url: null, http_status: null,
+      tempo_ms: 0, conteudo_resumo: null, pagespeed: null, verificado_em: agoraIso,
+      provisorio: anterior + 1 < LIMITE_TENTATIVAS, tentativas: anterior + 1,
+    };
+  };
   let proximo = 0;
   const operarios = Array.from({ length: Math.max(1, Math.min(paralelismo, urls.length)) }, async () => {
     for (;;) {
       const i = proximo++;
       if (i >= urls.length) break;
-      const anterior = Array.isArray(tentativasAnteriores) ? (tentativasAnteriores[i] ?? 0) : tentativasAnteriores;
+      if (abortadorDoLote.signal.aborted) {
+        // Fora do prazo: o próximo tick continua daqui.
+        saidas[i] = provisorioDe(i);
+        continue;
+      }
+      const anterior = anteriorDe(i);
       try {
-        saidas[i] = await auditarSite(urls[i]!, agoraIso, fetchFn, verificar, anterior);
+        // O sinal do lote acompanha cada item: quando o prazo estoura, a rede
+        // em voo é abortada e o item sai provisório em vez de pendurar.
+        saidas[i] = await Promise.race([
+          auditarSite(urls[i]!, agoraIso, fetchFn, verificar, anterior),
+          new Promise<SiteEnrichment>((resolve) => {
+            abortadorDoLote.signal.addEventListener(
+              "abort",
+              () => resolve(provisorioDe(i)),
+              { once: true },
+            );
+          }),
+        ]);
       } catch {
         saidas[i] = {
           ver: 1, classe: "fora-do-ar", problemas: ["fora-do-ar"],
@@ -404,7 +451,11 @@ export async function auditarSites(
       }
     }
   });
-  await Promise.all(operarios);
+  try {
+    await Promise.all(operarios);
+  } finally {
+    clearTimeout(relogioDoLote);
+  }
   return saidas;
 }
 

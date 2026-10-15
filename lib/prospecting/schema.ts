@@ -111,6 +111,10 @@ export const prospectingInputSchema = z.discriminatedUnion("action", [
       candidate_id: z.string().uuid(),
     })
     .strict(),
+  // Verificação de site sob demanda (spec 24): enriquece o próximo lote da
+  // campanha AGORA, em vez de esperar o tick. Fechada a token: quem dispara
+  // gasta rede e é uma pessoa revisando a fila.
+  z.object({ action: z.literal("verificar_sites"), id: z.string().uuid() }).strict(),
 ]);
 export type CampaignConfig = z.infer<typeof campaignConfigSchema>;
 export type CampaignPace = Pick<CampaignConfig, "daily_limit" | "interval_minutes">;

@@ -11,6 +11,7 @@ import type { ChannelProvider } from "@/lib/channels/types";
 import { ProspectingError } from "@/lib/prospecting/provider";
 import { campaignConfigSchema, prospectingInputSchema, type Prospect } from "@/lib/prospecting/schema";
 import { auditarSite } from "@/lib/prospecting/site-fetch";
+import { enriquecerSitesPendentes } from "@/lib/prospecting/site-enrich";
 import {
   instrucaoDeAbordagemFria,
   montarDadosDeAbordagem,
@@ -327,6 +328,20 @@ export async function POST(req: NextRequest) {
         mensagem: gerado.texto,
         estrategia,
         score: pontuarCandidato(linha.data.rating, linha.data.reviews, linha.data.site.classe, ofertas[0] ?? "site", linha.data.site.provisorio ?? false),
+      };
+    } else if (body.action === "verificar_sites") {
+      // Verificação sob demanda (spec 24): roda o MESMO enriquecimento do tick,
+      // agora — teto de 30 candidatos e prazo de lote de 60s por dentro, então
+      // a requisição termina e o lock não fica preso. Pode ser chamado de novo
+      // enquanto houver "A verificar".
+      const enriquecido = await withProspectingLock(pool, org, async (db) =>
+        enriquecerSitesPendentes(db, org, requestId, Date.now() + 120_000),
+      );
+      result = enriquecido;
+      auditMetadata = {
+        operation: body.action,
+        enriquecidos: enriquecido.enriquecidos,
+        classes: enriquecido.classes,
       };
     } else {
       result = await withProspectingLock(pool, org, async (db) => {

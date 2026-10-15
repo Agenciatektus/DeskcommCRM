@@ -411,4 +411,56 @@ describe("dns: inexistente é definitivo na hora, dúvida de rede espera", () =>
     expect(v.provisorio).toBe(false);
     expect(contador.chamadas).toBe(0);
   });
+
+  it("portão puro: Instagram sai agregador sem fetch", async () => {
+    const contador = { chamadas: 0 };
+    const v = await auditarSite(
+      "https://instagram.com/saliesteticaavancada", AGORA, fetchExplosivo(contador), VERIFICADOR_LIBERADO,
+    );
+    expect(v.classe).toBe("agregador");
+    expect(v.provisorio).toBe(false);
+    expect(contador.chamadas).toBe(0);
+  });
+
+  it("o lote inteiro termina dentro do prazo, mesmo com um site pendurado", async () => {
+    let liberarPendurado: (() => void) | null = null;
+    const fetchPendurado: typeof fetch = (async (input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("pendurado")) {
+        // Nunca responde: simula o site que ignora o abort (o defeito medido
+        // na VPS: o tick ficou ~30 min segurando o lock por causa de 1 site).
+        await new Promise<void>(() => {
+          liberarPendurado = () => undefined;
+        });
+      }
+      return new Response(PAGINA_BOA, { status: 200 });
+    }) as unknown as typeof fetch;
+    const t0 = Date.now();
+    const saidas = await auditarSites(
+      ["https://a.test/", "https://pendurado.test/", "https://b.test/"],
+      AGORA,
+      3,
+      fetchPendurado,
+      VERIFICADOR_LIBERADO,
+      0,
+      1000, // prazo curto: o teste mede a MECÂNICA do teto, não o default.
+    );
+    const decorrido = Date.now() - t0;
+    // Sem o teto do lote, este teste nunca termina (o runner morre no timeout).
+    expect(decorrido).toBeLessThan(30_000);
+    expect(saidas).toHaveLength(3);
+    expect(saidas[0]?.classe).toBe("site-ok");
+    expect(saidas[2]?.classe).toBe("site-ok");
+    void liberarPendurado;
+  }, 45_000);
+
+  it("portão puro: link de WhatsApp sai agregador sem fetch", async () => {
+    const contador = { chamadas: 0 };
+    const v = await auditarSite(
+      "https://wa.me/5511999990000", AGORA, fetchExplosivo(contador), VERIFICADOR_LIBERADO,
+    );
+    expect(v.classe).toBe("agregador");
+    expect(v.provisorio).toBe(false);
+    expect(contador.chamadas).toBe(0);
+  });
 });

@@ -85,4 +85,24 @@ describe("AuditoriaDoCandidato: resumo na linha, total no modal", () => {
     await waitFor(() => expect(screen.getByText("Olá!")).toBeVisible());
     expect(onPrevia).toHaveBeenCalledWith("cand-1");
   });
+
+  it("motivo igual ao veredito não repete na linha", () => {
+    const semSite = {
+      ver: 1,
+      classe: "sem-site",
+      problemas: [],
+      checklist: { tem: [], falta: ["whatsapp", "tel"] },
+      final_url: null,
+      http_status: null,
+      tempo_ms: 0,
+      conteudo_resumo: null,
+      pagespeed: null,
+      verificado_em: "2026-10-10T12:00:00.000Z",
+      provisorio: false,
+      tentativas: 0,
+    } as NonNullable<Prospect["site"]>;
+    const { container } = render(<AuditoriaDoCandidato {...props(candidato(semSite))} />);
+    const ocorrencias = container.textContent?.match(/sem site próprio/gi) ?? [];
+    expect(ocorrencias).toHaveLength(1);
+  });
 });
