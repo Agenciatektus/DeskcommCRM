@@ -14,6 +14,7 @@ import type pg from "pg";
 
 import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
+import { vereditoPuro } from "@/lib/prospecting/site-classify";
 import {
   auditarSites,
   INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN,
@@ -44,6 +45,32 @@ export async function enriquecerSitesPendentes(
   campanhaId?: string,
 ): Promise<ResumoEnriquecimento> {
   const vazio: ResumoEnriquecimento = { enriquecidos: 0, classes: {} };
+  let curados = 0;
+  try {
+    // Cura das linhas ÓRFÃS: sem `website` não há rede a fazer, mas elas
+    // também nunca passam pelo select de baixo (que exige website não-nulo).
+    // Medido na VPS: 116 linhas assim ficavam em "A verificar" para sempre.
+    // O veredito sem-site é determinístico: um UPDATE em lote resolve todas.
+    const semSite = vereditoPuro(null, new Date().toISOString());
+    if (semSite) {
+      const curadas = await db.query(
+        "update prospecting_candidates set data = data || jsonb_build_object('site', $3::jsonb), " +
+          "updated_at = now() where organization_id = $1 " +
+          "and ($2::uuid is null or campaign_id = $2::uuid) " +
+          "and selected is not false " +
+          "and data->'site' is null " +
+          "and nullif(trim(data->>'website'), '') is null",
+        [org, campanhaId ?? null, JSON.stringify(semSite)],
+      );
+      curados = curadas.rowCount ?? 0;
+    }
+  } catch (error) {
+    logger.error("[prospecting.enriquecer-sites] cura de sem-site falhou", {
+      organizationId: org,
+      error: error instanceof Error ? error.message : String(error),
+      requestId,
+    });
+  }
   let rows: Array<{ id: string; website: string; tentativas: number }>;
   try {
     const resultado = await db.query<{ id: string; website: string; tentativas: number }>(
@@ -98,6 +125,10 @@ export async function enriquecerSitesPendentes(
 
   const classes: Record<string, number> = {};
   let enriquecidos = 0;
+  if (curados > 0) {
+    enriquecidos += curados;
+    classes["sem-site"] = (classes["sem-site"] ?? 0) + curados;
+  }
   for (let i = 0; i < rows.length; i++) {
     const veredito = veredictos[i]!;
     try {

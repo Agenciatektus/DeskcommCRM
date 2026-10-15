@@ -313,8 +313,10 @@ export function ProspectingClient() {
   // Critério do #2048, medido sobre as linhas que a caixa pode alterar agora, não a fila inteira.
   const noneSelected = elegiveis.every((c) => c.selected === false);
   const desmarcadas = candidates.filter((c) => c.selected === false);
-  /** Quantas empresas ainda esperam a auditoria de site (botão "Verificar sites"). */
-  const pendentesDeSite = candidates.filter((c) => !c.data.site).length;
+  /** Quantas empresas MARCADAS ainda esperam a auditoria (botão "Verificar sites").
+   * Desmarcada não entra: ela não vai ser abordada, e a auditoria existe para
+   * decidir quem abordar — contar as desmarcadas dava número que nunca zerava. */
+  const pendentesDeSite = candidates.filter((c) => c.selected !== false && !c.data.site).length;
   /**
    * O que o botão "Excluir desmarcadas" realmente apaga. Espelha o `where` do servidor: sem
    * negócio nem conversa (o que já virou registro do CRM não é daqui) e só o que o operador

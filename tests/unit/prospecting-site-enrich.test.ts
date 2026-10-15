@@ -36,9 +36,11 @@ function veredito(classe: string) {
 
 function bancoFake(linhas: Array<{ id: string; website: string }>, quebraUpdate = false) {
   const updates: Array<{ sql: string; params: unknown[] }> = [];
+  const curas: Array<{ sql: string; params: unknown[] }> = [];
   const selects: Array<{ sql: string; params: unknown[] }> = [];
   return {
     updates,
+    curas,
     selects,
     pool: {
       query: async (sql: string, params: unknown[] = []) => {
@@ -48,8 +50,11 @@ function bancoFake(linhas: Array<{ id: string; website: string }>, quebraUpdate 
         }
         if (sql.startsWith("update prospecting_candidates")) {
           if (quebraUpdate) throw new Error("banco fora");
-          updates.push({ sql, params });
-          return { rowCount: 1 };
+          // Cura em LOTE (sem `id = $X`) x update POR candidato: coisas
+          // diferentes, com contadores diferentes.
+          const porCandidato = sql.includes(" and id = $2 ");
+          (porCandidato ? updates : curas).push({ sql, params });
+          return { rowCount: porCandidato ? 1 : 0 };
         }
         return { rows: [] };
       },
@@ -140,5 +145,22 @@ describe("enriquecerSitesPendentes", () => {
     expect(INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN * (LIMITE_TENTATIVAS - 1)).toBeGreaterThanOrEqual(
       60,
     );
+  });
+
+  it("caso D: sem URL e sem veredito ganha 'sem-site' em lote, sem rede", async () => {
+    const { pool, curas } = bancoFake([]);
+    vi.mocked(auditarSites).mockResolvedValue([] as never);
+    await enriquecerSitesPendentes(pool, "org", "req", Date.now() + 60000, "camp-1");
+    // O UPDATE em lote cura as linhas órfãs (sem website): medidas 116 na org —
+    // sem ele, a tela mostra "A verificar" para sempre (o select de rede exige
+    // `website` não-nulo, então essas linhas nunca chegavam ao veredito puro).
+    const cura = curas.find(
+      (u) => u.sql.includes("data->'site' is null") && u.sql.includes("data || jsonb_build_object('site'"),
+    );
+    expect(cura, "sem o UPDATE puro, a linha sem URL fica eterna em A verificar").toBeDefined();
+    expect(cura!.sql).toContain("nullif(trim(data->>'website'), '') is null");
+    // A campanha também delimita o lote puro.
+    expect(cura!.sql).toContain("campaign_id = $2");
+    expect(cura!.params[1]).toBe("camp-1");
   });
 });
