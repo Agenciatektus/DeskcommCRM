@@ -7,13 +7,18 @@
  * reusa o `PoolClient`, e respeita o deadline do tick como `worker.ts:375`.
  *
  * Fail-open: erro aqui nunca pausa campanha, muda `status` ou atrasa
- * `next_send_at`. Candidato não enriquecido tenta de novo no próximo tick.
+ * `next_send_at`. Candidato não enriquecido tenta de novo no próximo tick;
+ * provisório só volta à fila depois do intervalo mínimo entre tentativas.
  */
 import type pg from "pg";
 
 import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
-import { auditarSites, LIMITE_TENTATIVAS } from "@/lib/prospecting/site-fetch";
+import {
+  auditarSites,
+  INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN,
+  LIMITE_TENTATIVAS,
+} from "@/lib/prospecting/site-fetch";
 
 /** Teto por org/rodada: 6 paralelos × ~1s médio medido cabem no deadline. */
 const TETO_POR_RODADA = 30;
@@ -25,7 +30,8 @@ export interface ResumoEnriquecimento {
 
 /**
  * Enriquece candidatos sem veredito e reverifica os provisórios
- * (`provisorio=true`, abaixo de `LIMITE_TENTATIVAS`), qualquer status (`new`,
+ * (`provisorio=true`, abaixo de `LIMITE_TENTATIVAS` e com `verificado_em`
+ * mais antigo que o intervalo mínimo), qualquer status (`new`,
  * `queued` e `sent` — os já abordados ganham auditoria para a retomada).
  * Definitivo nunca é sobrescrito. Audita `prospecting.site_enriched` só quando
  * houve efeito.
@@ -46,9 +52,10 @@ export async function enriquecerSitesPendentes(
         "where organization_id=$1 " +
         "and nullif(trim(data->>'website'), '') is not null " +
         "and (data->'site' is null or (coalesce((data->'site'->>'provisorio')::boolean, false) " +
-        "and coalesce(nullif(data->'site'->>'tentativas', '')::int, 0) < $3)) " +
+        "and coalesce(nullif(data->'site'->>'tentativas', '')::int, 0) < $3 " +
+        "and coalesce(nullif(data->'site'->>'verificado_em','')::timestamptz, 'epoch'::timestamptz) <= now() - make_interval(mins => $4))) " +
         "order by created_at limit $2",
-      [org, TETO_POR_RODADA, LIMITE_TENTATIVAS],
+      [org, TETO_POR_RODADA, LIMITE_TENTATIVAS, INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN],
     );
     rows = resultado.rows;
   } catch (error) {

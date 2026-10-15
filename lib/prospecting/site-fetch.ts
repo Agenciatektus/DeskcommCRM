@@ -221,8 +221,8 @@ function anoDesatualizado(html: string): string | null {
  *
  * Transitória (timeout, conexão resetada, DNS recusado) ganha UMA nova
  * tentativa e, persistindo, vira veredito PROVISÓRIO (`provisorio: true`,
- * `tentativas` incrementado) — não citável, reverificado pelo tick até
- * `LIMITE_TENTATIVAS`, quando congela definitivo. O docstring antigo prometia
+ * `tentativas` incrementado) — não citável, reverificado pelo tick depois do
+ * intervalo mínimo até `LIMITE_TENTATIVAS`, quando congela definitivo. O docstring antigo prometia
  * esse retry sem implementá-lo; agora existe de verdade.
  * `pagespeed` sempre null nesta fase (faixa lenta posterior, spec §3.5).
  */
@@ -327,6 +327,9 @@ export async function auditarSite(
 
 /** Teto de reverificações de um veredito provisório antes de congelar. */
 export const LIMITE_TENTATIVAS = 3;
+
+// As 3 tentativas precisam cobrir um período de verdade, não 3 minutos de queda de rede.
+export const INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN = 120;
 
 /** Verdadeiro quando o tick deve buscar este veredito de novo. */
 export function deveReverificar(site: { provisorio: boolean; tentativas: number }): boolean {

@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { audit } from "@/lib/audit";
-import { auditarSites } from "@/lib/prospecting/site-fetch";
+import {
+  auditarSites,
+  INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN,
+  LIMITE_TENTATIVAS,
+} from "@/lib/prospecting/site-fetch";
 import { enriquecerSitesPendentes } from "@/lib/prospecting/site-enrich";
 
 vi.mock("@/lib/prospecting/site-fetch", async (importOriginal) => ({
@@ -32,11 +36,16 @@ function veredito(classe: string) {
 
 function bancoFake(linhas: Array<{ id: string; website: string }>, quebraUpdate = false) {
   const updates: Array<{ sql: string; params: unknown[] }> = [];
+  const selects: Array<{ sql: string; params: unknown[] }> = [];
   return {
     updates,
+    selects,
     pool: {
       query: async (sql: string, params: unknown[] = []) => {
-        if (sql.includes("from prospecting_candidates")) return { rows: linhas };
+        if (sql.includes("from prospecting_candidates")) {
+          if (sql.startsWith("select")) selects.push({ sql, params });
+          return { rows: linhas };
+        }
         if (sql.startsWith("update prospecting_candidates")) {
           if (quebraUpdate) throw new Error("banco fora");
           updates.push({ sql, params });
@@ -101,5 +110,32 @@ describe("enriquecerSitesPendentes", () => {
     expect(resumo).toEqual({ enriquecidos: 0, classes: {} });
     expect(updates).toHaveLength(0);
     expect(vi.mocked(audit)).not.toHaveBeenCalled();
+  });
+
+  it("caso A: provisório só volta depois do intervalo mínimo (parâmetro, não número)", async () => {
+    const { pool, selects } = bancoFake([]);
+    await enriquecerSitesPendentes(pool, "org", "req", Date.now() + 60000);
+    expect(selects).toHaveLength(1);
+    const selecao = selects[0]!;
+    expect(selecao.sql).toContain("verificado_em");
+    expect(selecao.sql).toContain("$4");
+    expect(selecao.params[3]).toBe(INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN);
+  });
+
+  it("caso B: primeira tentativa continua imediata (sem condição de tempo)", async () => {
+    const { pool, selects } = bancoFake([]);
+    await enriquecerSitesPendentes(pool, "org", "req", Date.now() + 60000);
+    const sql = selects[0]!.sql;
+    expect(sql).toContain("data->'site' is null");
+    const [antes, depois] = sql.split("data->'site' is null");
+    expect(antes).not.toContain("verificado_em");
+    expect(depois).toContain("verificado_em");
+  });
+
+  it("caso C: intervalo cobre período de verdade, não 3 minutos", () => {
+    expect(INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN).toBeGreaterThan(1);
+    expect(INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN * (LIMITE_TENTATIVAS - 1)).toBeGreaterThanOrEqual(
+      60,
+    );
   });
 });
