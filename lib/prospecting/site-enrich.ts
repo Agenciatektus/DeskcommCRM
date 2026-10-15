@@ -101,7 +101,28 @@ export async function enriquecerSitesPendentes(
     });
     return vazio;
   }
-  if (rows.length === 0 || Date.now() >= deadline) return vazio;
+  const classes: Record<string, number> = {};
+  let enriquecidos = 0;
+  if (curados > 0) {
+    enriquecidos += curados;
+    classes["sem-site"] = (classes["sem-site"] ?? 0) + curados;
+  }
+  if (rows.length === 0 || Date.now() >= deadline) {    // A cura em lote pode ter rodado MESMO sem linha de rede: o resumo precisa
+    // dela (o botão mostra "N verificadas") — o early return antigo devolvia 0
+    // e o operador via trabalho feito sem número.
+    if (enriquecidos > 0) {
+      void audit({
+        action: "prospecting.site_enriched",
+        organizationId: org,
+        bypassedRls: true,
+        resourceType: "prospecting",
+        resourceId: null,
+        metadata: { enriquecidos, classes },
+        requestId,
+      });
+    }
+    return { enriquecidos, classes };
+  }
 
   const agoraIso = new Date().toISOString();
   let veredictos: Awaited<ReturnType<typeof auditarSites>>;
@@ -121,13 +142,6 @@ export async function enriquecerSitesPendentes(
       requestId,
     });
     return vazio;
-  }
-
-  const classes: Record<string, number> = {};
-  let enriquecidos = 0;
-  if (curados > 0) {
-    enriquecidos += curados;
-    classes["sem-site"] = (classes["sem-site"] ?? 0) + curados;
   }
   for (let i = 0; i < rows.length; i++) {
     const veredito = veredictos[i]!;

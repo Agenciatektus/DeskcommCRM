@@ -163,4 +163,23 @@ describe("enriquecerSitesPendentes", () => {
     expect(cura!.sql).toContain("campaign_id = $2");
     expect(cura!.params[1]).toBe("camp-1");
   });
+
+  it("caso E: cura sem linhas de rede ainda aparece no resumo", async () => {
+    // A campanha pode ter SO linha órfã (sem URL): a cura roda e o botão
+    // precisa mostrar o número — o early return antigo devolvia 0.
+    const updates: Array<{ sql: string; params: unknown[] }> = [];
+    const pool = {
+      query: async (sql: string, params: unknown[] = []) => {
+        if (sql.includes("from prospecting_candidates")) return { rows: [] };
+        if (sql.startsWith("update prospecting_candidates")) {
+          updates.push({ sql, params });
+          return { rowCount: sql.includes(" and id = $2 ") ? 1 : 3 };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    const resumo = await enriquecerSitesPendentes(pool, "org", "req", Date.now() + 60000, "camp-1");
+    expect(resumo).toEqual({ enriquecidos: 3, classes: { "sem-site": 3 } });
+    expect(vi.mocked(audit)).toHaveBeenCalledTimes(1);
+  });
 });
