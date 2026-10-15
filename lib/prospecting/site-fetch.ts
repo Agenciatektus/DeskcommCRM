@@ -13,11 +13,13 @@
  * - timeout 8000ms por tentativa; 1 retry real em falha transitória
  *   (timeout/conexão) — o docstring antigo prometia sem implementar;
  * - transitória persistente vira veredito PROVISÓRIO (não citável, reverificado
- *   até `LIMITE_TENTATIVAS`); definitivo só o comprovado (HTTP/SSL/agregador).
+ *   até `LIMITE_TENTATIVAS`); definitivo só o comprovado (HTTP/SSL/agregador)
+ *   e o domínio inexistente (NXDOMAIN com certeza do resolvedor, na hora).
  *
  * Residual conhecido: DNS rebinding entre a verificação e o connect (TOCTOU),
  * declarado na guarda da casa. Fora do modelo de ameaça desta fase.
  */
+import { lookup as lookupDns } from "node:dns/promises";
 import { isIP } from "node:net";
 
 import {
@@ -102,7 +104,35 @@ function codigoSsl(erro: unknown): string | null {
 /** Verifica o host pela guarda da casa. Injetável para testes determinísticos. */
 export type VerificadorDeHost = (hostname: string) => Promise<void>;
 
-const verificadorPadrao: VerificadorDeHost = (hostname) => assertDestinoResolvidoSeguro(hostname);
+/** `lookup` injetável de DNS (fake nos testes, `node:dns/promises` em produção). */
+export type FuncaoLookup = (
+  hostname: string,
+  opcoes: { all: true },
+) => Promise<Array<{ address: string }>>;
+
+/**
+ * Verificador padrão com NXDOMAIN separado de dúvida de rede (spec 24):
+ * resolvedor respondeu `ENOTFOUND` = domínio não existe (prova, definitivo);
+ * qualquer outra falha de lookup = dúvida (provisório, como a guarda da casa).
+ * Sucesso e literal de IP delegam à guarda da casa (só ela julga IP privado).
+ */
+export function criarVerificadorPadrao(lookupFn: FuncaoLookup = lookupDns): VerificadorDeHost {
+  return async (hostname: string) => {
+    const literal = hostname.replace(/^\[(.*)\]$/, "$1");
+    if (isIP(literal) !== 0) return assertDestinoResolvidoSeguro(hostname);
+    try {
+      await lookupFn(hostname, { all: true });
+    } catch (erro) {
+      if ((erro as { code?: string } | null)?.code === "ENOTFOUND") {
+        throw new Error("unsafe_url:dns_nxdomain");
+      }
+      throw new Error("unsafe_url:dns_failed");
+    }
+    return assertDestinoResolvidoSeguro(hostname);
+  };
+}
+
+const verificadorPadrao: VerificadorDeHost = criarVerificadorPadrao();
 
 async function hostLiberado(
   url: string,
@@ -113,8 +143,9 @@ async function hostLiberado(
   try {
     await verificar(new URL(url).hostname);
   } catch (erro) {
-    // Preserva a mensagem da casa (`unsafe_url:private_ip` vs
-    // `unsafe_url:dns_failed`): o chamador decide entre definitivo e provisório.
+    // Preserva a mensagem da casa (`unsafe_url:private_ip`,
+    // `unsafe_url:dns_nxdomain` vs `unsafe_url:dns_failed`): o chamador
+    // decide entre definitivo e provisório.
     const mensagem = erro instanceof Error ? erro.message : String(erro);
     return mensagem.includes("unsafe_url:") ? mensagem : "rede-interna";
   }
@@ -219,11 +250,12 @@ function anoDesatualizado(html: string): string | null {
 /**
  * Audita um site e devolve o veredito pronto para `data.site`.
  *
- * Transitória (timeout, conexão resetada, DNS recusado) ganha UMA nova
+ * Transitória (timeout, conexão resetada, dúvida de rede) ganha UMA nova
  * tentativa e, persistindo, vira veredito PROVISÓRIO (`provisorio: true`,
  * `tentativas` incrementado) — não citável, reverificado pelo tick depois do
- * intervalo mínimo até `LIMITE_TENTATIVAS`, quando congela definitivo. O docstring antigo prometia
- * esse retry sem implementá-lo; agora existe de verdade.
+ * intervalo mínimo até `LIMITE_TENTATIVAS`, quando congela definitivo.
+ * Domínio inexistente (NXDOMAIN) é prova, não dúvida: definitivo na hora.
+ * O docstring antigo prometia esse retry sem implementá-lo; agora existe de verdade.
  * `pagespeed` sempre null nesta fase (faixa lenta posterior, spec §3.5).
  */
 export async function auditarSite(
@@ -259,6 +291,11 @@ export async function auditarSite(
       // internet pública — definitivo e citável (nada há para reverificar).
       if (bloqueio === "url-invalida" || bloqueio === "rede-interna" || bloqueio.includes("private_ip")) {
         return falha("fora-do-ar", ["fora-do-ar"]);
+      }
+      // Domínio NÃO EXISTE (NXDOMAIN com certeza do resolvedor): prova, não
+      // dúvida — definitivo e citável na hora, sem retry.
+      if (bloqueio.includes("dns_nxdomain")) {
+        return falha("fora-do-ar", ["fora-do-ar"], false, tentativasAnteriores + 1);
       }
       // DNS que não resolveu: passageiro até prova em contrário.
       if (bloqueio.includes("dns_")) return provisorio(tentativasAnteriores);
@@ -328,8 +365,8 @@ export async function auditarSite(
 /** Teto de reverificações de um veredito provisório antes de congelar. */
 export const LIMITE_TENTATIVAS = 3;
 
-// As 3 tentativas precisam cobrir um período de verdade, não 3 minutos de queda de rede.
-export const INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN = 120;
+// As 3 tentativas cobrem 1h (30min × 2 intervalos), não 3 minutos de queda de rede; domínio inexistente nem espera.
+export const INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN = 30;
 
 /** Verdadeiro quando o tick deve buscar este veredito de novo. */
 export function deveReverificar(site: { provisorio: boolean; tentativas: number }): boolean {
