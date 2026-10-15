@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import {
   Bell,
   Brain,
+  EnvelopeSimple,
   FlowArrow,
   Funnel,
   Kanban,
@@ -53,6 +54,7 @@ export const VISUAL_DA_ACAO: Record<ActionType, VisualDaCaixa> = {
   start_message_flow: { icon: FlowArrow, paleta: "Iniciar follow-up", ...SUCESSO },
   create_task: { icon: Bell, paleta: "Tarefa interna", ...AVISO },
   apply_task_plan: { icon: ListChecks, paleta: "Plano de tarefas", ...AVISO },
+  send_email: { icon: EnvelopeSimple, paleta: "Enviar e-mail", ...SUCESSO },
 };
 
 /** A ordem da paleta: a mesma do seletor "Adicionar ação" do editor de hoje. */
