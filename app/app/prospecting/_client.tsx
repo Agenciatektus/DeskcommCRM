@@ -111,7 +111,13 @@ export function ProspectingClient() {
           `/api/v1/prospecting${ordenar === "score" ? "?ordenar=score" : ""}`,
         )
       ).data,
-    refetchInterval: 10000,
+    // A fila se completa sozinha enquanto houver "A verificar" (o tick
+    // enriquece em levas); sem pendência, o polling para — recarregar a
+    // cada 10s para sempre seria tráfego sem leitor.
+    refetchInterval: (consulta) => {
+      const estado = consulta.state.data as State | undefined;
+      return estado?.candidates.some((c) => !c.data.site) ? 10000 : false;
+    },
   });
   const data = query.data;
   const searchAttempt = useRef<{ fingerprint: string; id: string } | null>(null);

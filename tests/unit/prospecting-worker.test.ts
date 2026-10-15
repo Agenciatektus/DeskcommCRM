@@ -68,6 +68,10 @@ vi.mock("@/lib/prospecting/store", () => ({
   prepararCandidatoNoEnvio: mocks.prepare,
 }));
 import { sendNextCandidate, tickProspecting } from "@/lib/prospecting/worker";
+import {
+  INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN,
+  LIMITE_TENTATIVAS,
+} from "@/lib/prospecting/site-fetch";
 import { OrgNaoOperanteError } from "@/lib/organizacao/operante";
 import { withProspectingLock } from "@/lib/prospecting/store";
 import type { Campaign } from "@/lib/prospecting/store";
@@ -272,7 +276,20 @@ describe("tick da prospecção × organização parada", () => {
     // Nenhuma lista de ids de org parada é carregada nem passada à query — a
     // régua SQL decide no banco, e a query não cortaria em `max_rows`.
     expect(sql).not.toMatch(/organization_id <> all/);
-    expect(params ?? []).toEqual([]);
+    expect(params ?? []).toEqual([LIMITE_TENTATIVAS, INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN]);
+  });
+
+  it("inclui org ociosa com enriquecimento pendente (auditoria antes do envio)", async () => {
+    const query = vi.fn(async (_sql: string, _params?: unknown[]) => ({ rows: [] }));
+    await tickProspecting({ query } as never, {} as never);
+    const [sql, params] = query.mock.calls[0]!;
+    // O ramo de quem envia continua: running/searching entram como antes.
+    expect(sql).toMatch(/status='running'/);
+    // O ramo novo: org parada com candidato a enriquecer (site nulo ou
+    // provisório no prazo) entra para a rodada de leitura.
+    expect(sql).toMatch(/data->'site' is null/);
+    expect(sql).toMatch(/provisorio/);
+    expect(params ?? []).toEqual([LIMITE_TENTATIVAS, INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN]);
   });
 });
 

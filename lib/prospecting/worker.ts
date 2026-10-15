@@ -23,6 +23,10 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { assertProspectingDelivery } from "./guard";
 import { instrucaoDeAbordagemFria, montarDadosDeAbordagem } from "./estrategia-site";
+import {
+  INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN,
+  LIMITE_TENTATIVAS,
+} from "./site-fetch";
 import { blocoVozVendedor, personalizacaoDaOrganizacao } from "./personalizar";
 import { enriquecerSitesPendentes } from "./site-enrich";
 import { campaignConfigSchema } from "./schema";
@@ -377,8 +381,18 @@ export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, requ
   // filtrar depois a deixaria no topo para sempre. A régua é a SQL
   // `fn_org_operante` (mesma de `organizations.status = 'active'`) — não se
   // trafega a lista de ids das paradas na consulta (cortaria em `max_rows`).
+  // A auditoria decide QUEM abordar, então ela vem ANTES do envio: org ociosa
+  // (draft/pausada/concluída) com enriquecimento pendente entra para a rodada
+  // de leitura — sem ela, "A verificar" nunca vira veredito até alguém iniciar.
   const { rows: organizations } = await pool.query<{ organization_id: string }>(
-    "select pc.organization_id from prospecting_campaigns pc where (pc.status='running' or pc.search_status in ('starting','running')) and public.fn_org_operante(pc.organization_id) group by pc.organization_id order by min(pc.updated_at) limit 20",
+    "select pc.organization_id from prospecting_campaigns pc where (pc.status='running' or pc.search_status in ('starting','running') " +
+      "or exists (select 1 from prospecting_candidates pend where pend.organization_id=pc.organization_id " +
+      "and nullif(trim(pend.data->>'website'), '') is not null " +
+      "and (pend.data->'site' is null or (coalesce((pend.data->'site'->>'provisorio')::boolean, false) " +
+      "and coalesce(nullif(pend.data->'site'->>'tentativas', '')::int, 0) < $1 " +
+      "and coalesce(nullif(pend.data->'site'->>'verificado_em','')::timestamptz, 'epoch'::timestamptz) <= now() - make_interval(mins => $2))))) " +
+      "and public.fn_org_operante(pc.organization_id) group by pc.organization_id order by min(pc.updated_at) limit 20",
+    [LIMITE_TENTATIVAS, INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN],
   );
   const deadline = Date.now() + 180000;
   const tickId = requestId ?? `prospecting:tick:${Date.now()}`;

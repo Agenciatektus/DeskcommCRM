@@ -11,8 +11,9 @@ import { lerCreds, loginComoAdmin } from "./helpers/login-admin";
  * AUDITORIA DO SITE NA FILA DE PROSPECÇÃO (spec 24, issue #2703).
  *
  * A fila tratava "tem site" como fato binário. Agora cada candidato com
- * `data.site` mostra a auditoria embutida (veredito, raio-X, estratégia), a
- * fila ordena por score e há botões de reanalisar + prévia. O que esta spec
+ * `data.site` mostra o resumo (score + veredito de uma linha) e o modal
+ * "Ver detalhes" com auditoria embutida (veredito, raio-X, estratégia); a
+ * fila ordena por score e o modal traz os botões de reanalisar + prévia. O que esta spec
  * prova PELA TELA, com valores exatos (não presença):
  *
  * 1. o painel exibe o veredito e o motivo do score do CANDIDATO CERTO;
@@ -21,8 +22,8 @@ import { lerCreds, loginComoAdmin } from "./helpers/login-admin";
  *
  * O que ela NÃO prova de propósito (sem rede externa nem IA no e2e): o clique
  * em "Reanalisar site" (faria fetch real) e em "Prévia da abordagem" (chamaria
- * o modelo) — os dois botões são assertados visíveis e habilitados; a lógica
- * deles vive em `tests/unit/prospecting-site-fetch.test.ts` e no par-IA do PR.
+ * o modelo) — os dois botões são assertados visíveis e habilitados dentro do
+ * modal; a lógica deles vive em `tests/unit/prospecting-site-fetch.test.ts` e no par-IA do PR.
  *
  * Pré-requisitos (banco local do baseline, app buildada):
  *   pnpm e2e:env && pnpm e2e:build
@@ -194,9 +195,12 @@ test.describe("Auditoria do site na fila de prospecção (#2703)", () => {
       .allTextContents();
     expect(ordemDepois[0]).toContain("Vitta");
 
-    // 4. ações presentes e habilitadas (o clique faria rede/IA: fora do e2e).
-    await expect(linhaQuente.getByRole("button", { name: "Reanalisar site" })).toBeEnabled();
-    await expect(linhaQuente.getByRole("button", { name: "Prévia da abordagem" })).toBeEnabled();
+    // 4. detalhe no modal: ações presentes e habilitadas (o clique faria
+    // rede/IA: fora do e2e).
+    await linhaQuente.getByRole("button", { name: "Ver detalhes" }).click();
+    const dialogo = page.getByRole("dialog");
+    await expect(dialogo.getByRole("button", { name: "Reanalisar site" })).toBeEnabled();
+    await expect(dialogo.getByRole("button", { name: "Prévia da abordagem" })).toBeEnabled();
     await page.screenshot({ path: path.join(EVIDENCIA, "fila-com-auditoria.png"), fullPage: true });
   });
 });
