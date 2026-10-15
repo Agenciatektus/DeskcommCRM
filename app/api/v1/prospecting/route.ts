@@ -335,7 +335,7 @@ export async function POST(req: NextRequest) {
       // a requisição termina e o lock não fica preso. Pode ser chamado de novo
       // enquanto houver "A verificar".
       const enriquecido = await withProspectingLock(pool, org, async (db) =>
-        enriquecerSitesPendentes(db, org, requestId, Date.now() + 120_000),
+        enriquecerSitesPendentes(db, org, requestId, Date.now() + 120_000, body.id),
       );
       result = enriquecido;
       auditMetadata = {

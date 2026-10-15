@@ -114,12 +114,15 @@ describe("enriquecerSitesPendentes", () => {
 
   it("caso A: provisório só volta depois do intervalo mínimo (parâmetro, não número)", async () => {
     const { pool, selects } = bancoFake([]);
-    await enriquecerSitesPendentes(pool, "org", "req", Date.now() + 60000);
+    await enriquecerSitesPendentes(pool, "org", "req", Date.now() + 60000, "camp-1");
     expect(selects).toHaveLength(1);
     const selecao = selects[0]!;
     expect(selecao.sql).toContain("verificado_em");
     expect(selecao.sql).toContain("$4");
+    // O botão é POR CAMPANHA: o filtro vai como parâmetro, nunca concatenado.
+    expect(selecao.sql).toContain("campaign_id = $5");
     expect(selecao.params[3]).toBe(INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN);
+    expect(selecao.params[4]).toBe("camp-1");
   });
 
   it("caso B: primeira tentativa continua imediata (sem condição de tempo)", async () => {

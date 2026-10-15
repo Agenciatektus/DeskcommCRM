@@ -41,6 +41,7 @@ export async function enriquecerSitesPendentes(
   org: string,
   requestId: string,
   deadline: number,
+  campanhaId?: string,
 ): Promise<ResumoEnriquecimento> {
   const vazio: ResumoEnriquecimento = { enriquecidos: 0, classes: {} };
   let rows: Array<{ id: string; website: string; tentativas: number }>;
@@ -50,6 +51,9 @@ export async function enriquecerSitesPendentes(
         "coalesce(nullif(data->'site'->>'tentativas', '')::int, 0) as tentativas " +
         "from prospecting_candidates " +
         "where organization_id=$1 " +
+        // O botão da tela é POR CAMPANHA: sem este filtro, "Verificar sites" de
+        // uma campanha gastava o lote da org inteira.
+        "and ($5::uuid is null or campaign_id = $5::uuid) " +
         "and nullif(trim(data->>'website'), '') is not null " +
         // Desmarcado na preparação fica de fora: ele não vai ser abordado, e a
         // auditoria é para decidir QUEM abordar (retorna ao marcar de novo).
@@ -58,7 +62,7 @@ export async function enriquecerSitesPendentes(
         "and coalesce(nullif(data->'site'->>'tentativas', '')::int, 0) < $3 " +
         "and coalesce(nullif(data->'site'->>'verificado_em','')::timestamptz, 'epoch'::timestamptz) <= now() - make_interval(mins => $4))) " +
         "order by created_at limit $2",
-      [org, TETO_POR_RODADA, LIMITE_TENTATIVAS, INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN],
+      [org, TETO_POR_RODADA, LIMITE_TENTATIVAS, INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN, campanhaId ?? null],
     );
     rows = resultado.rows;
   } catch (error) {
