@@ -185,6 +185,19 @@ interface Busca {
   status: number;
   html: string;
   ms: number;
+  /** O servidor respondeu com um DESAFIO anti-robô (`cf-mitigated`): barrou o nosso IP, não o visitante. */
+  desafioAntiRobo?: boolean;
+}
+
+/**
+ * Resposta de erro que NÃO é prova de defeito do site: 429 (limite de taxa) e 503
+ * (indisponível) são temporários por definição, e o desafio anti-robô é o
+ * datacenter da VPS sendo barrado enquanto o site abre normal para quem visita.
+ * Virar "o site responde com erro" para sempre — e ser dito à empresa — é o mesmo
+ * risco que já se fechou para timeout e DNS: segue PROVISÓRIO (não citável).
+ */
+function erroPassageiro(b: Pick<Busca, "status" | "desafioAntiRobo">): boolean {
+  return b.status === 429 || b.status === 503 || b.desafioAntiRobo === true;
 }
 
 async function buscar(
@@ -211,7 +224,13 @@ async function buscar(
       continue;
     }
     const html = await lerLimitado(res);
-    return { finalUrl: res.url || atual, status: res.status, html, ms: Date.now() - t0 };
+    return {
+      finalUrl: res.url || atual,
+      status: res.status,
+      html,
+      ms: Date.now() - t0,
+      desafioAntiRobo: !!res.headers.get("cf-mitigated"),
+    };
   }
   throw new Error("redirects-demais");
 }
@@ -350,6 +369,7 @@ export async function auditarSite(
     const minusculo = html.toLowerCase();
     const problemas: string[] = [];
     if (busca.status >= 400) {
+      if (erroPassageiro(busca)) return provisorio(tentativasAnteriores);
       return {
         ver: 1, classe: "site-ruim", problemas: [`http-${busca.status}`],
         checklist: montarChecklist(html), final_url: busca.finalUrl.slice(0, 500),
@@ -434,13 +454,17 @@ export async function auditarSites(
   const relogioDoLote = setTimeout(() => abortadorDoLote.abort(), prazoMs);
   const anteriorDe = (i: number) =>
     Array.isArray(tentativasAnteriores) ? (tentativasAnteriores[i] ?? 0) : tentativasAnteriores;
+  // Quem não coube no prazo do lote NÃO teve fetch concluído: não há evidência de nada,
+  // então fica PROVISÓRIO e a tentativa NÃO é consumida. Contá-la fazia o item do fim do
+  // lote (a seleção é `order by created_at limit 30`) congelar como "fora do ar" na
+  // terceira rodada sem nunca ter sido buscado — e a estratégia diria isso à empresa.
   const provisorioDe = (i: number): SiteEnrichment => {
     const anterior = anteriorDe(i);
     return {
       ver: 1, classe: "fora-do-ar", problemas: ["fora-do-ar"],
       checklist: { tem: [], falta: [] }, final_url: null, http_status: null,
       tempo_ms: 0, conteudo_resumo: null, pagespeed: null, verificado_em: agoraIso,
-      provisorio: anterior + 1 < LIMITE_TENTATIVAS, tentativas: anterior + 1,
+      provisorio: true, tentativas: anterior,
     };
   };
   let proximo = 0;
@@ -455,8 +479,10 @@ export async function auditarSites(
       }
       const anterior = anteriorDe(i);
       try {
-        // O sinal do lote acompanha cada item: quando o prazo estoura, a rede
-        // em voo é abortada e o item sai provisório em vez de pendurar.
+        // Quando o prazo do lote estoura, o item sai provisório (`provisorioDe`) em vez
+        // de pendurar o lote. ATENÇÃO: o sinal do lote só resolve esta corrida — ele NÃO
+        // chega ao `fetch`, que segue em segundo plano até o próprio timeout
+        // (`TIMEOUT_MS`). O bloqueio da organização é liberado; o efeito é pequeno.
         saidas[i] = await Promise.race([
           auditarSite(urls[i]!, agoraIso, fetchFn, verificar, anterior),
           new Promise<SiteEnrichment>((resolve) => {

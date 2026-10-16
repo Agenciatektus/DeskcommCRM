@@ -72,6 +72,42 @@ describe("site-fetch", () => {
     expect(v.problemas).not.toContain("sem-https");
   });
 
+  describe("resposta de erro que não é prova de defeito (pedido da triagem do #2711)", () => {
+    const respondeCom = (status: number, headers: Record<string, string> = {}) =>
+      (async () => new Response("<html><title>Just a moment...</title></html>", { status, headers })) as unknown as typeof fetch;
+
+    for (const status of [429, 503]) {
+      it(`${status} vira PROVISÓRIO (não citável), não 'o site responde com erro'`, async () => {
+        const v = await auditarSite("https://exemplo.com.br", AGORA, respondeCom(status), VERIFICADOR_LIBERADO, 0);
+        expect(v.provisorio).toBe(true);
+        expect(v.tentativas).toBe(1);
+        expect(v.problemas).not.toContain(`http-${status}`);
+      });
+    }
+
+    it("403 com desafio anti-robô (cf-mitigated) vira PROVISÓRIO: é o IP do datacenter barrado, não o site", async () => {
+      const v = await auditarSite(
+        "https://exemplo.com.br", AGORA,
+        respondeCom(403, { server: "cloudflare", "cf-mitigated": "challenge" }), VERIFICADOR_LIBERADO, 0,
+      );
+      expect(v.provisorio).toBe(true);
+    });
+
+    it("403 SEM desafio continua erro de verdade (site-ruim, definitivo)", async () => {
+      const v = await auditarSite("https://exemplo.com.br", AGORA, respondeCom(403), VERIFICADOR_LIBERADO, 0);
+      expect(v.provisorio).toBe(false);
+      expect(v.problemas).toContain("http-403");
+    });
+  });
+
+  it("o item que estoura o PRAZO DO LOTE fica provisório e NÃO consome tentativa", async () => {
+    const pendurado = (() => new Promise<Response>(() => {})) as unknown as typeof fetch;
+    const [r] = await auditarSites(["https://pendurado.test/"], AGORA, 1, pendurado, VERIFICADOR_LIBERADO, 2, 100);
+    expect(r!.provisorio).toBe(true);
+    expect(r!.tentativas).toBe(2);
+    expect(r!.http_status).toBeNull();
+  });
+
   it("404 vira site-ruim com http-404", async () => {
     const v = await auditarSite(
       "https://sumiu.test/", AGORA,
