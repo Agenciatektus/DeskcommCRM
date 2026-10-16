@@ -214,6 +214,13 @@ describe("B) quem recebe prévia", () => {
     expect(r.previas).toBe(0);
   });
 
+  it("lê as campanhas da MAIS NOVA para a mais antiga (a busca nova não espera atrás das velhas)", async () => {
+    const { pool, sqls } = montar({ candidatos: { [C1]: [] } });
+    await rodar(pool);
+    const sql = sqls.find((s) => s.sql.includes("from prospecting_campaigns") && !s.sql.includes("join ai_agents"))!.sql;
+    expect(sql).toContain("order by created_at desc");
+  });
+
   it("a seleção de candidatos filtra no SQL o que o TS também recusa (não trava a fila)", async () => {
     const { pool, sqls } = montar({ candidatos: { [C1]: [] } });
     await rodar(pool);

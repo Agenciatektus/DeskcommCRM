@@ -158,13 +158,16 @@ async function trabalhar(
   if (Date.now() >= deadline) return;
   const campanhas = (
     await db.query<CampanhaDoPreparo>(
-      "select id, config, search from prospecting_campaigns where organization_id=$1 and status in ('draft','running','paused') order by created_at",
+      "select id, config, search from prospecting_campaigns where organization_id=$1 and status in ('draft','running','paused') order by created_at desc",
       [org],
     )
   ).rows;
 
   // Passo 1 — a rede: verifica os sites. De TODAS as campanhas, com ou sem agente
   // (o veredito serve à decisão de quem abordar, e a prévia só vem depois dele).
+  // A campanha MAIS NOVA vem primeiro (`order by created_at desc` acima): é a que a pessoa
+  // está olhando. Com as antigas na frente, uma busca nova esperava na fila atrás de
+  // centenas de candidatos velhos (medido na VPS: 8 prévias/rodada, 370 pendentes).
   let restanteDeSites = TETO_DE_SITES_POR_RODADA;
   for (const c of campanhas) {
     if (restanteDeSites <= 0 || Date.now() >= deadline) break;
