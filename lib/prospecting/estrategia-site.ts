@@ -10,6 +10,7 @@
 import type { ClasseDeSite, ItemDoRaioX, RaioXDoSite } from "@/lib/prospecting/site-classify";
 import { descreverProblema } from "@/lib/prospecting/site-classify";
 import type { OfertaDaCampanha } from "./schema";
+import type { PreviaSalva } from "./previa";
 export type { OfertaDaCampanha } from "./schema";
 
 export interface ObjecaoComResposta {
@@ -260,6 +261,48 @@ export function montarEstrategia(entrada: EntradaDaEstrategia): EstrategiaDoLead
   return { cenario, angulo, ganchos, objecoes, proximoPasso };
 }
 
+/**
+ * A estratégia do candidato a partir do veredito EFETIVO (`siteEfetivo`) e do
+ * contexto da campanha. Fonte única: a TELA (prévia) e o ENVIO (worker) chamam
+ * esta função — sem isso o ângulo que a pessoa revisa na prévia e o que o agente
+ * recebe no envio divergem, e o par tela×envio se rompe em silêncio.
+ */
+export function estrategiaDoCandidato(
+  data: {
+    rating: number | null;
+    reviews: number | null;
+    socials?: string[] | null;
+  },
+  site: {
+    classe: ClasseDeSite;
+    problemas: string[];
+    checklist: RaioXDoSite | null;
+    provisorio: boolean;
+  },
+  contexto: {
+    ofertas: OfertaDaCampanha[];
+    nicho: string;
+    sobrescritaVocabulario?: Record<string, string> | null;
+    status: string;
+    followUpsEnviados?: number;
+  },
+): EstrategiaDoLead {
+  return montarEstrategia({
+    classe: site.classe,
+    problemas: site.problemas,
+    checklist: site.checklist,
+    nota: data.rating,
+    numAvaliacoes: data.reviews,
+    temInstagram: /instagram/i.test((data.socials ?? []).join(",")),
+    ofertas: contexto.ofertas,
+    nicho: contexto.nicho,
+    sobrescritaVocabulario: contexto.sobrescritaVocabulario ?? null,
+    provisorio: site.provisorio,
+    status: contexto.status,
+    followUpsEnviados: contexto.followUpsEnviados ?? 0,
+  });
+}
+
 /** Pesos do site por oferta primária. v1 travada por teste; retuning exige medição. */
 const PESOS_DO_SITE: Record<OfertaDaCampanha, Record<string, number>> = {
   site: { "sem-site": 30, agregador: 30, "site-ruim": 22, "fora-do-ar": 25, "ssl-invalido": 25, "site-ok": 10 },
@@ -347,15 +390,46 @@ export interface DadosDeAbordagem {
   dados: Record<string, string>;
 }
 
+const MAX_BLOCO_ESTRATEGIA = 900;
+
+/**
+ * O bloco de ESTRATÉGIA para a instrução do agente (lado `system`).
+ *
+ * Só texto fixo e números que o PRÓPRIO sistema produziu — cenário, ângulo,
+ * ganchos (as objeções ficam na tela). NUNCA conteúdo publicado por terceiros (nome do negócio,
+ * endereço, resumo do HTML): a instrução sobe para o `system`, longe da cerca
+ * de nonce, e o texto do site de outra pessoa virando instrução de sistema é a
+ * porta de injeção pela lateral. O que é de terceiro fica nos DADOS (`user`).
+ */
+export function blocoDeEstrategiaParaAgente(estrategia: EstrategiaDoLead): string {
+  const partes: string[] = [
+    "Estratégia de abordagem definida para este lead (siga o ângulo):",
+    `Cenário: ${estrategia.cenario}`,
+    `Ângulo: ${estrategia.angulo}`,
+  ];
+  if (estrategia.ganchos.length > 0) {
+    partes.push("Ganchos:", ...estrategia.ganchos.map((g) => `- ${g}`));
+  }
+  // Sem as objeções: servem à conversa, não à primeira mensagem. Teto de 900
+  // para a instrução não crescer sem limite.
+  const texto = partes.join("\n");
+  return texto.length > MAX_BLOCO_ESTRATEGIA ? texto.slice(0, MAX_BLOCO_ESTRATEGIA) : texto;
+}
+
 /**
  * A instrução da abordagem fria: a do operador + a moldura que proíbe
  * inventar preenchimento. Fonte única — worker e prévia usam a mesma, ou o
  * par (tela × ferramenta) deixa de concordar.
+ *
+ * `estrategia` (B1) soma o bloco de ângulo ao FIM. Ausente/nula, a saída é byte
+ * a byte a de antes — é o que permite o par medir sem ruído quando não há
+ * estratégia.
  */
 export function instrucaoDeAbordagemFria(
   instruction: string,
   qualification: string,
   voz?: string,
+  estrategia?: EstrategiaDoLead | null,
 ): string {
   const base =
     `${instruction}\nFaça uma primeira abordagem curta e transparente. ` +
@@ -364,13 +438,16 @@ export function instrucaoDeAbordagemFria(
     `Critérios a confirmar durante a conversa: ${qualification}`;
   // Voz do vendedor (settings da org): some à moldura, nunca aos dados.
   // Vazia = byte a byte igual ao sem-voz (o par tela×ferramenta não sente).
-  return voz ? `${base}\n${voz}` : base;
+  const comVoz = voz ? `${base}\n${voz}` : base;
+  if (!estrategia) return comVoz;
+  return `${comVoz}\n${blocoDeEstrategiaParaAgente(estrategia)}`;
 }
 
 /**
  * Linha a linha para `gerarAbordagemDeFormulario`: os 6 campos que o envio já
  * usava (mesmos valores, mesma ordem) + `Auditoria` e `Detalhe` quando há
- * veredito. Fonte única — worker e prévia bebem daqui.
+ * veredito + `Rascunho de abordagem` quando a tela guardou uma prévia válida.
+ * Fonte única — worker e prévia bebem daqui.
  */
 export function montarDadosDeAbordagem(
   data: {
@@ -388,6 +465,7 @@ export function montarDadosDeAbordagem(
     provisorio: boolean;
     verificado_em: string;
   } | null,
+  previa?: PreviaSalva | null,
 ): Record<string, string> {
   const dados: Record<string, string> = {
     Empresa: data.name,
@@ -407,5 +485,9 @@ export function montarDadosDeAbordagem(
       (problemas.length > 0 ? ` — ${problemas.slice(0, 3).join("; ")}` : "");
     if (site.conteudo_resumo) dados["Detalhe"] = site.conteudo_resumo;
   }
+  // A PRÉVIA guardada pela tela (B1): o rascunho que a pessoa revisou. Vai como
+  // DADO — dentro da cerca de nonce, nunca como instrução — e com teto próprio
+  // em `formatarDados` (1200, não os 500 dos outros campos).
+  if (previa?.texto) dados["Rascunho de abordagem"] = previa.texto;
   return dados;
 }

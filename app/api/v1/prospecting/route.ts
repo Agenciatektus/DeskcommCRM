@@ -4,6 +4,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
 import { resolveAuthDual, tetoDeEscritaDoToken } from "@/lib/api/auth-dual";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { logger } from "@/lib/logger";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { capabilitiesOf } from "@/lib/channels/capabilities";
@@ -12,11 +13,17 @@ import { ProspectingError } from "@/lib/prospecting/provider";
 import { campaignConfigSchema, prospectingInputSchema, type Prospect } from "@/lib/prospecting/schema";
 import { auditarSite } from "@/lib/prospecting/site-fetch";
 import { siteEfetivo } from "@/lib/prospecting/site-efetivo";
+import {
+  chaveDaAuditoria,
+  gravarPrevia,
+  previaValida,
+  type PreviaSalva,
+} from "@/lib/prospecting/previa";
 import { enriquecerSitesPendentes } from "@/lib/prospecting/site-enrich";
 import {
+  estrategiaDoCandidato,
   instrucaoDeAbordagemFria,
   montarDadosDeAbordagem,
-  montarEstrategia,
   pontuarCandidato,
   type OfertaDaCampanha,
 } from "@/lib/prospecting/estrategia-site";
@@ -266,7 +273,9 @@ export async function POST(req: NextRequest) {
         classes: reanalise.classes,
       };
     } else if (body.action === "prever_abordagem") {
-      // Somente leitura: gera a copy sem enviar e sem auditar (sem mutação).
+      // Gera a copy, GUARDA a prévia no candidato (B1) e audita. Deixou de ser
+      // somente leitura: a copy que a pessoa revisa vira o rascunho que o tick
+      // envia, e a gravação precisa de trilha.
       const linhas = await pool.query(
         "select pc.id, pc.data, pc.status, pc.contact_id, pc.campaign_id, c.config, c.search from prospecting_candidates pc join prospecting_campaigns c on c.organization_id=pc.organization_id and c.id=pc.campaign_id where pc.organization_id=$1 and pc.campaign_id=$2 and pc.id=$3",
         [org, body.id, body.candidate_id],
@@ -299,9 +308,17 @@ export async function POST(req: NextRequest) {
       if (!cfg?.success || !cfg.data.agent_id)
         throw new ProspectingError("Configure o agente da campanha para pré-visualizar.", 422);
       const ofertas = (cfg.data.ofertas ?? ["site"]) as OfertaDaCampanha[];
-      // Mesmos fios do envio (voz + vocabulário da org): a prévia só vale se
-      // for byte a byte o que o tick mandaria.
+      // Mesmos fios do envio (voz + vocabulário da org + estratégia): a prévia
+      // só vale se for byte a byte o que o tick mandaria. A estratégia vem da
+      // MESMA fonte que o worker usa (`estrategiaDoCandidato`) — sem isso a tela
+      // mostraria um ângulo e o envio mandaria outro.
       const personalizacao = await personalizacaoDaOrganizacao(pool, org);
+      const estrategia = estrategiaDoCandidato(linha.data, site, {
+        ofertas,
+        nicho: linha.search?.niche ?? linha.data.category ?? "",
+        sobrescritaVocabulario: personalizacao.vocabulario ?? null,
+        status: linha.status,
+      });
       const gerado = await gerarAbordagemDeFormulario(pool, llmEdgeConfigFromEnv(env), {
         tenantId: org,
         agentId: cfg.data.agent_id,
@@ -310,6 +327,7 @@ export async function POST(req: NextRequest) {
           cfg.data.instruction,
           cfg.data.qualification,
           blocoVozVendedor(personalizacao) || undefined,
+          estrategia,
         ),
         origem: "Pesquisa de empresas",
         origemDaAbordagem: "prospeccao_fria",
@@ -317,25 +335,51 @@ export async function POST(req: NextRequest) {
       });
       if (!gerado.ok)
         throw new ProspectingError(`A IA não produziu uma abordagem: ${gerado.reason}.`, 422);
-      const estrategia = montarEstrategia({
-        classe: site.classe,
-        problemas: site.problemas,
-        checklist: site.checklist,
-        nota: linha.data.rating,
-        numAvaliacoes: linha.data.reviews,
-        temInstagram: /instagram/i.test((linha.data.socials ?? []).join(",")),
-        ofertas,
-        nicho: linha.search?.niche ?? linha.data.category ?? "",
-        sobrescritaVocabulario: personalizacao.vocabulario ?? null,
-        provisorio: site.provisorio ?? false,
-        status: linha.status,
-        followUpsEnviados: 0,
-      });
-      result = {
-        mensagem: gerado.texto,
-        estrategia,
-        score: pontuarCandidato(linha.data.rating, linha.data.reviews, site.classe, ofertas[0] ?? "site", site.provisorio ?? false),
+      const score = pontuarCandidato(
+        linha.data.rating,
+        linha.data.reviews,
+        site.classe,
+        ofertas[0] ?? "site",
+        site.provisorio ?? false,
+      );
+      // A prévia é ancorada na CHAVE da auditoria (sobre qual veredito ela foi
+      // escrita), nunca num instante solto. FAIL-OPEN: se a gravação falhar, a
+      // pessoa ainda recebe a copy (`salva:false`) — perder a prévia por erro de
+      // escrita seria pior do que não guardá-la. O log NUNCA carrega o TEXTO.
+      const previa: PreviaSalva = {
+        texto: gerado.texto,
+        baseada_em: chaveDaAuditoria(linha.data) ?? `${site.classe}@derivado`,
+        gerada_em: new Date().toISOString(),
+        agente_id: cfg.data.agent_id,
       };
+      let salva = false;
+      try {
+        await gravarPrevia(pool, {
+          organizationId: org,
+          campaignId: body.id,
+          candidateId: body.candidate_id,
+          previa,
+        });
+        salva = true;
+        await audit({
+          action: "prospecting.preview_saved",
+          organizationId: org,
+          actorUserId: auth.actor.type === "user" ? auth.actor.id : null,
+          actorApiTokenId: auth.apiTokenId ?? null,
+          resourceType: "prospecting",
+          resourceId: body.candidate_id,
+          metadata: { operation: body.action, score: score.valor },
+          requestId,
+        });
+      } catch (error) {
+        logger.warn("prospecting.preview_not_saved", {
+          requestId,
+          campaignId: body.id,
+          candidateId: body.candidate_id,
+          message: error instanceof Error ? error.message : "erro desconhecido",
+        });
+      }
+      result = { mensagem: gerado.texto, estrategia, score, salva };
     } else if (body.action === "verificar_sites") {
       // Verificação sob demanda (spec 24): roda o MESMO enriquecimento do tick,
       // agora — teto de 30 candidatos e prazo de lote de 60s por dentro, então
@@ -377,8 +421,8 @@ export async function POST(req: NextRequest) {
       });
     }
     const resourceId = "id" in body ? body.id : null;
-    // Prévia é somente leitura: sem mutação, sem audit (a regra do cron vazio
-    // vale para rota de leitura; o custo aparece em `llm_calls`).
+    // A prévia audita DENTRO do bloco (só quando a gravação venceu): aqui é só
+    // devolver, para não gravar uma trilha de "changed" que não houve.
     if (body.action === "prever_abordagem") return ok(result, { requestId, headers });
     await audit({
       action: "prospecting.changed",

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { SiteEnrichment } from "@/lib/prospecting/site-classify";
+import type { PreviaSalva } from "@/lib/prospecting/previa";
 
 /**
  * Os dois números do RITMO da campanha, com os mesmos limites no início e no
@@ -143,6 +144,12 @@ export interface Prospect {
   socials: string[];
   /** Veredito do enriquecimento de site (spec 24). Ausente = pendente. */
   site?: SiteEnrichment | null;
+  /**
+   * A prévia da abordagem que a tela gerou e guardou (B1). Só vale enquanto a
+   * auditoria em que ela se apoiou continuar de pé (`previaValida`); ausente ou
+   * vencida, o envio escreve do zero.
+   */
+  previa?: PreviaSalva | null;
 }
 
 /** The existing Maps integrations normalize Brazilian numbers; never guess a foreign country. */

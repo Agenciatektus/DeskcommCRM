@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  blocoDeEstrategiaParaAgente,
+  estrategiaDoCandidato,
   instrucaoDeAbordagemFria,
   montarDadosDeAbordagem,
   montarEstrategia,
@@ -175,5 +177,106 @@ describe("estrategia-site", () => {
     expect(e.angulo).toContain("convênios");
     const sem = montarEstrategia(base);
     expect(sem.angulo).toContain("concorrente");
+  });
+});
+
+/**
+ * A ESTRATÉGIA VAI PARA O AGENTE — E O AGENTE NÃO RECEBE CONTEÚDO DE TERCEIRO.
+ *
+ * A instrução inteira sobe para o `system` (é a instrução do operador, ver
+ * `blocoDeModo`). O que o site de outra pessoa publicou — nome, endereço,
+ * resumo de HTML — é CONTEÚDO e vive no `user`, dentro da cerca de nonce. Um
+ * bloco de estratégia que interpolasse esse conteúdo abriria a porta de injeção
+ * pela lateral: o texto do site viraria instrução de sistema.
+ */
+describe("a estratégia vai para o agente sem carregar conteúdo de terceiro", () => {
+  const EMPRESA = "Clínica Vitta";
+  const ENDERECO = "Rua das Flores, 123 — Centro";
+  const CONTEUDO = "Promoção imperdível de verão";
+  const data = {
+    name: EMPRESA,
+    category: "Estética",
+    address: ENDERECO,
+    website: "https://vitta.test",
+    rating: 4.8,
+    reviews: 120,
+    socials: [] as string[],
+  };
+  const site = {
+    classe: "fora-do-ar" as const,
+    problemas: ["fora-do-ar"],
+    checklist: { tem: [], falta: [] },
+    conteudo_resumo: CONTEUDO,
+    provisorio: false,
+    verificado_em: "2026-10-10T12:00:00.000Z",
+  };
+
+  it("D) nem o bloco de estratégia nem a instrução carregam conteúdo publicado por terceiro", () => {
+    const estrategia = estrategiaDoCandidato(data, site, {
+      ofertas: ["site"],
+      nicho: "clínica",
+      status: "novo",
+    });
+    const bloco = blocoDeEstrategiaParaAgente(estrategia);
+    const instrucao = instrucaoDeAbordagemFria(
+      "Instrução do operador",
+      "Qualificação",
+      undefined,
+      estrategia,
+    );
+    for (const sentinela of [EMPRESA, ENDERECO, CONTEUDO]) {
+      expect(bloco, `"${sentinela}" é conteúdo de terceiro e não pertence ao system`).not.toContain(
+        sentinela,
+      );
+      expect(instrucao).not.toContain(sentinela);
+    }
+    // E o que o agente PRECISA receber está lá: o cenário e o ângulo.
+    expect(bloco).toContain(estrategia.cenario);
+    expect(instrucao).toContain(estrategia.angulo);
+  });
+
+  it("o bloco não leva objeções e respeita o teto de 900 caracteres", () => {
+    const estrategia = estrategiaDoCandidato(data, site, {
+      ofertas: ["site"],
+      nicho: "clínica",
+      status: "novo",
+    });
+    const curta = blocoDeEstrategiaParaAgente({
+      ...estrategia,
+      ganchos: [],
+      objecoes: [{ objecao: "OBJECAO-SENTINELA", resposta: "RESPOSTA-SENTINELA" }],
+    });
+    expect(curta).not.toContain("OBJECAO-SENTINELA");
+    expect(curta).not.toContain("RESPOSTA-SENTINELA");
+    const longa = blocoDeEstrategiaParaAgente({
+      ...estrategia,
+      ganchos: Array.from({ length: 40 }, (_, i) => `gancho longo número ${i} com bastante texto`),
+    });
+    expect(longa.length).toBeLessThanOrEqual(900);
+  });
+
+  it("sem estratégia, a instrução é byte a byte a de antes (o par tela×envio não sente)", () => {
+    const base = instrucaoDeAbordagemFria("Oi", "Q", "Quem envia:\n- Nome: Ana");
+    expect(instrucaoDeAbordagemFria("Oi", "Q", "Quem envia:\n- Nome: Ana", null)).toBe(base);
+    expect(instrucaoDeAbordagemFria("Oi", "Q", "Quem envia:\n- Nome: Ana", undefined)).toBe(base);
+  });
+
+  it("com estratégia, o bloco SOMA à instrução e preserva a voz do vendedor", () => {
+    const estrategia = estrategiaDoCandidato(data, site, {
+      ofertas: ["site"],
+      nicho: "clínica",
+      status: "novo",
+    });
+    const comEstrategia = instrucaoDeAbordagemFria(
+      "Instrução do operador",
+      "Qualificação",
+      "Voz do vendedor",
+      estrategia,
+    );
+    expect(comEstrategia).toContain("Voz do vendedor");
+    expect(comEstrategia).toContain(estrategia.cenario);
+    expect(comEstrategia.startsWith(instrucaoDeAbordagemFria("Instrução do operador", "Qualificação", "Voz do vendedor"))).toBe(
+      true,
+    );
   });
 });

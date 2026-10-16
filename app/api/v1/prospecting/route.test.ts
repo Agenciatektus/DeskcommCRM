@@ -12,11 +12,15 @@ const deps = vi.hoisted(() => ({
   pool: vi.fn(),
   activate: vi.fn(),
   generate: vi.fn(),
+  warn: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: async () => null }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
+vi.mock("@/lib/logger", () => ({
+  logger: { info: vi.fn(), warn: deps.warn, error: vi.fn(), debug: vi.fn() },
+}));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({}) }));
 vi.mock("@/lib/agent-engine/db/request-pool", () => ({ getRequestPool: deps.pool }));
@@ -182,7 +186,10 @@ describe("POST /api/v1/prospecting prever_abordagem sem contato", () => {
     const chamada = vi.mocked(gerarAbordagemDeFormulario).mock.calls[0]![2] as { leadId: unknown };
     expect(chamada.leadId).not.toBe(CANDIDATO);
     expect(chamada.leadId).toBeNull();
-    expect(vi.mocked(audit)).not.toHaveBeenCalled();
+    // A prévia deixou de ser somente leitura (B1): ela é guardada, e gravar
+    // audita. O caso A continua sendo do leadId; a trilha é medida no caso C.
+    const body = await res.json();
+    expect(body.data.salva).toBe(true);
   });
 
   it("caso B: com contato, leadId é o contact_id", async () => {
@@ -225,5 +232,94 @@ describe("POST /api/v1/prospecting prever_abordagem sem contato", () => {
     const res = await POST(previaSessao(CANDIDATO));
     expect(res.status).toBe(409);
     expect(vi.mocked(gerarAbordagemDeFormulario)).not.toHaveBeenCalled();
+  });
+
+  it("caso C: guarda a prévia no candidato e audita prospecting.preview_saved", async () => {
+    const sqls: string[] = [];
+    deps.pool.mockReturnValue({
+      query: async (sql: string) => {
+        sqls.push(sql);
+        return sql.includes("from prospecting_candidates")
+          ? { rows: [linhaDoCandidato(null)] }
+          : { rows: [] };
+      },
+    });
+    const res = await POST(previaSessao(CANDIDATO));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.salva).toBe(true);
+    expect(body.data.mensagem).toBe("Olá! Vi o site de vocês.");
+    const update = sqls.find((s) => /update prospecting_candidates/.test(s));
+    expect(update, "a prévia precisa ser GRAVADA, não só devolvida").toBeTruthy();
+    expect(update).toMatch(/organization_id\s*=\s*\$\d/);
+    expect(vi.mocked(audit)).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "prospecting.preview_saved" }),
+    );
+    // A mesma estratégia que a tela mostra sobe para o agente (par com o envio).
+    const chamada = vi.mocked(gerarAbordagemDeFormulario).mock.calls[0]![2] as {
+      instrucao: string;
+      dados: Record<string, string>;
+    };
+    expect(chamada.instrucao).toContain("Estratégia de abordagem definida para este lead");
+    expect(chamada.instrucao).toContain("Cenário: Site ok");
+  });
+
+  it("a prévia gera DO ZERO: mesmo com prévia válida guardada, não manda o rascunho e grava o agente", async () => {
+    const params: unknown[][] = [];
+    deps.pool.mockReturnValue({
+      query: async (sql: string, p?: unknown[]) => {
+        if (/update prospecting_candidates/.test(sql)) params.push(p ?? []);
+        if (!sql.includes("from prospecting_candidates")) return { rows: [] };
+        const linha = linhaDoCandidato(null);
+        return {
+          rows: [
+            {
+              ...linha,
+              data: {
+                ...linha.data,
+                previa: {
+                  texto: "RASCUNHO-ANTIGO",
+                  baseada_em: `${SITE_OK.classe}@${SITE_OK.verificado_em}`,
+                  gerada_em: "2026-10-10T00:00:00.000Z",
+                  agente_id: "11111111-1111-4111-8111-111111111111",
+                },
+              },
+            },
+          ],
+        };
+      },
+    });
+    const res = await POST(previaSessao(CANDIDATO));
+    expect(res.status).toBe(200);
+    const chamada = vi.mocked(gerarAbordagemDeFormulario).mock.calls.at(-1)![2] as {
+      dados: Record<string, string>;
+    };
+    expect(chamada.dados["Rascunho de abordagem"]).toBeUndefined();
+    const gravado = JSON.parse(String(params[0]![3])) as { agente_id: string };
+    expect(gravado.agente_id).toBe(CONFIG.agent_id);
+  });
+
+  it("caso G: falha ao gravar é FAIL-OPEN — responde a prévia com salva:false e loga sem o texto", async () => {
+    const sqls: string[] = [];
+    deps.pool.mockReturnValue({
+      query: async (sql: string) => {
+        sqls.push(sql);
+        if (sql.includes("from prospecting_candidates")) return { rows: [linhaDoCandidato(null)] };
+        if (/update prospecting_candidates/.test(sql)) throw new Error("db down");
+        return { rows: [] };
+      },
+    });
+    const res = await POST(previaSessao(CANDIDATO));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.salva).toBe(false);
+    expect(body.data.mensagem, "a prévia não some porque a gravação falhou").toBe(
+      "Olá! Vi o site de vocês.",
+    );
+    // Sem mutação efetiva, sem trilha.
+    expect(vi.mocked(audit)).not.toHaveBeenCalled();
+    // O log NÃO pode carregar o texto da mensagem (LGPD: conteúdo do cliente).
+    expect(deps.warn).toHaveBeenCalled();
+    expect(JSON.stringify(deps.warn.mock.calls)).not.toContain("Olá! Vi o site de vocês.");
   });
 });

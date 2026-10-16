@@ -423,3 +423,53 @@ describe("funil só no envio: a checagem do canal vem ANTES de criar qualquer co
     expect(checagem).toBeLessThan(mocks.prepare.mock.invocationCallOrder[0] ?? 0);
   });
 });
+
+/**
+ * A PROVA EM PAR DA PRÉVIA (B1, `docs/doctrine/prova-em-par.md`).
+ *
+ * A tela gera a prévia com a estratégia e a guarda no candidato. Se o ENVIO não
+ * levar a MESMA estratégia e o MESMO rascunho, o par se rompe: a pessoa revisa
+ * um texto e o tick manda outro, e nenhum dos dois lados acusa sozinho. Aqui
+ * mede-se o lado da ferramenta (o worker) com o mesmo candidato que a tela
+ * (caso C, `route.test.ts`) mede do outro lado.
+ */
+describe("a abordagem fria leva a estratégia e a prévia guardada (par com a tela)", () => {
+  const comPrevia = {
+    ...candidate,
+    data: {
+      name: "Example",
+      website: null,
+      site: null,
+      socials: [],
+      previa: {
+        texto: "Rascunho guardado pela tela",
+        baseada_em: "sem-site@derivado",
+        gerada_em: "2026-10-11T09:00:00.000Z",
+        agente_id: "11111111-1111-4111-8111-111111111111",
+      },
+    },
+  };
+
+  it("F) passa a estratégia na instrução e o rascunho nos dados", async () => {
+    await sendNextCandidate({} as never, database(undefined, comPrevia) as never, {} as never, campaign);
+    expect(mocks.generate).toHaveBeenCalledTimes(1);
+    const args = mocks.generate.mock.calls[0]![2] as {
+      instrucao: string;
+      dados: Record<string, string>;
+    };
+    expect(args.dados["Rascunho de abordagem"]).toBe("Rascunho guardado pela tela");
+    // A mesma estratégia que a tela mostra ("Sem site", sem-site derivado).
+    expect(args.instrucao).toContain("Sem site");
+    expect(args.instrucao).toContain("Estratégia");
+  });
+
+  it("F) sem prévia guardada o rascunho não vai — mas a estratégia continua indo", async () => {
+    await sendNextCandidate({} as never, database() as never, {} as never, campaign);
+    const args = mocks.generate.mock.calls[0]![2] as {
+      instrucao: string;
+      dados: Record<string, string>;
+    };
+    expect(args.dados["Rascunho de abordagem"]).toBeUndefined();
+    expect(args.instrucao).toContain("Sem site");
+  });
+});

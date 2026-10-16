@@ -22,9 +22,11 @@ import { decidirPreGoLiveDoCanalViaSupabase } from "@/lib/ai/elegibilidade/consu
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { assertProspectingDelivery } from "./guard";
-import { instrucaoDeAbordagemFria, montarDadosDeAbordagem } from "./estrategia-site";
+import { instrucaoDeAbordagemFria, montarDadosDeAbordagem, estrategiaDoCandidato } from "./estrategia-site";
+import { siteEfetivo } from "./site-efetivo";
+import { previaValida } from "./previa";
 import { blocoVozVendedor, personalizacaoDaOrganizacao } from "./personalizar";
-import { campaignConfigSchema } from "./schema";
+import { campaignConfigSchema, type OfertaDaCampanha } from "./schema";
 import { ProspectingError } from "./provider";
 import { OrgNaoOperanteError } from "@/lib/organizacao/operante";
 import {
@@ -231,6 +233,21 @@ export async function sendNextCandidate(
     ).rows[0];
     if (!agent?.published_version_id)
       throw new ProspectingError("Agente pausado ou sem versão publicada.");
+    // A MESMA estratégia e a MESMA prévia da tela (B1). O veredito sai de
+    // `siteEfetivo` — a leitura única que `prever_abordagem` também usa — para o
+    // par tela×envio não divergir (quem não tem site já é `sem-site` derivado,
+    // sem rede). A prévia guardada só entra se ainda estiver ancorada na
+    // auditoria atual (`previaValida`); vencida, o envio escreve do zero.
+    const personalizacao = await personalizacaoDaOrganizacao(db, c.organization_id);
+    const site = siteEfetivo(p.data, new Date().toISOString());
+    const estrategia = site
+      ? estrategiaDoCandidato(p.data, site, {
+          ofertas: (cfg.ofertas ?? ["site"]) as OfertaDaCampanha[],
+          nicho: c.search?.niche ?? p.data.category ?? "",
+          sobrescritaVocabulario: personalizacao.vocabulario ?? null,
+          status: p.status,
+        })
+      : null;
     const generated = await gerarAbordagemDeFormulario(pool, llmEdgeConfigFromEnv(env), {
       tenantId: c.organization_id,
       agentId: cfg.agent_id,
@@ -238,14 +255,15 @@ export async function sendNextCandidate(
       instrucao: instrucaoDeAbordagemFria(
         cfg.instruction,
         cfg.qualification,
-        blocoVozVendedor(await personalizacaoDaOrganizacao(db, c.organization_id)) || undefined,
+        blocoVozVendedor(personalizacao) || undefined,
+        estrategia,
       ),
       origem: "Pesquisa de empresas",
       // NÃO é `automacao`: a pessoa não entrou em funil nenhum. O prompt do
       // ramo frio é o único que proíbe afirmar preenchimento — ver blocoDeModo.
       origemDaAbordagem: "prospeccao_fria",
       // Fonte única em `montarDadosDeAbordagem` (prévia da tela bebe da mesma).
-      dados: montarDadosDeAbordagem(p.data, p.data.site ?? null),
+      dados: montarDadosDeAbordagem(p.data, site, previaValida(p.data)),
     });
     if (!generated.ok)
       // DO CANDIDATO: o modelo não produziu texto para ESTES dados.
