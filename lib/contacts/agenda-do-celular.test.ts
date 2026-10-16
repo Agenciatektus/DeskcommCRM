@@ -37,6 +37,8 @@ function fakeDeps(opcoes: {
   upsertNulo?: boolean;
   /** O `contact.created` falha — a criação JÁ aconteceu e não se desfaz. */
   falhaEmit?: boolean;
+  /** O carimbo de origem falha — idem: o contato já existe. */
+  falhaMarca?: boolean;
 } = {}) {
   const paginas = opcoes.paginas ?? [[]];
   const variantesNoBanco = new Set((opcoes.existentes ?? []).flatMap(phoneLookupVariants));
@@ -44,6 +46,7 @@ function fakeDeps(opcoes: {
   const upserts: Array<{ telefone: string; chatId: string; notify: string | null }> = [];
   const emits: string[] = [];
   const audits: Array<Record<string, unknown>> = [];
+  const marcados: string[] = [];
   const deps: AgendaDeps = {
     listarPagina: async (_session, pagina) => {
       offsets.push(pagina.offset);
@@ -61,11 +64,15 @@ function fakeDeps(opcoes: {
       if (opcoes.falhaEmit) throw new Error("emit indisponível");
       emits.push(e.contactId);
     },
+    marcarOrigem: async (_org, ids) => {
+      if (opcoes.falhaMarca) throw new Error("update indisponível");
+      marcados.push(...ids);
+    },
     audit: async (entry) => {
       audits.push(entry as unknown as Record<string, unknown>);
     },
   };
-  return { deps, offsets, upserts, emits, audits };
+  return { deps, offsets, upserts, emits, audits, marcados };
 }
 
 async function sincronizar(f: ReturnType<typeof fakeDeps>) {
@@ -239,6 +246,27 @@ describe("sincronizarAgendaDoCelular", () => {
     });
     const resumo = await sincronizar(f);
     expect(resumo).toMatchObject({ importados: 2, erros: 0 });
+  });
+
+  it("carimba a origem da agenda SÓ em quem nasceu agora (doc 158)", async () => {
+    const f = fakeDeps({
+      paginas: [[agenda("5511999990001@c.us"), agenda("5511999990002@c.us"), agenda("5511999990003@c.us")]],
+      existentes: ["+5511999990002"],
+      falhaUpsertEm: ["+5511999990003"],
+    });
+    await sincronizar(f);
+    // O já existente não passa pela RPC, e o que falhou não tem id: só o criado.
+    expect(f.marcados).toEqual(["contato-1"]);
+  });
+
+  it("o carimbo de origem que falha não desfaz a criação nem derruba o lote", async () => {
+    const f = fakeDeps({
+      paginas: [[agenda("5511999990001@c.us"), agenda("5511999990002@c.us")]],
+      falhaMarca: true,
+    });
+    const resumo = await sincronizar(f);
+    expect(resumo).toMatchObject({ importados: 2, erros: 0 });
+    expect(f.audits).toHaveLength(1);
   });
 
   it("audita o gesto com o resumo inteiro", async () => {

@@ -10,7 +10,7 @@ import type { ContatoDoAparelho } from "@/lib/waha/client";
 
 // O tipo do contato do aparelho ATRAVESSA o seam como tipo só (o import some na
 // compilação), do mesmo jeito do `OutboundMedia` acima: quem fora daqui precisa
-// tipar a lista que o canal devolve importa DESTE módulo, não de `lib/waha/*` —
+// tipar a lista que o canal devolve importa DESTE módulo, não de `lib/waha/` —
 // e o lint de canal reprovaria o caminho.
 export type { OutboundMedia, ContatoDoAparelho };
 

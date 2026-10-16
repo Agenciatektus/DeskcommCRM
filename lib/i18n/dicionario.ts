@@ -8779,6 +8779,10 @@ export const DICIONARIO: Traducoes = {
   "A sincronização bateu no teto de uma passada. Clique em Sincronizar de novo para continuar — o que já entrou não duplica.": {
     es: "La sincronización llegó al tope de una pasada. Haz clic en Sincronizar de nuevo para continuar — lo que ya entró no se duplica.",
   },
+  "Isto traz todos os contatos salvos no celular, inclusive os pessoais. Só mande campanha a quem autorizou receber.": {
+    es: "Esto trae todos los contactos guardados en el celular, incluidos los personales. Solo envía campañas a quien autorizó recibirlas.",
+  },
+  "Agenda do celular": { es: "Agenda del celular" },
   // ── Juntar contatos duplicados ──────────────────────────────────────────
   "Duplicados": { es: "Duplicados" },
   "Contatos duplicados": { es: "Contactos duplicados" },

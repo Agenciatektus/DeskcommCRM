@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { ArrowsClockwise } from "@/lib/ui/icons";
+import { ArrowsClockwise, Warning } from "@/lib/ui/icons";
 import { useT } from "@/hooks/i18n/useT";
 import {
   capabilitiesOf,
@@ -136,6 +136,21 @@ export function SyncPhoneContactsDialog({ open, onOpenChange }: Props) {
                 )}
               </>
             )}
+            {/* Decisão do doc 158: a agenda do celular da empresa traz também
+                família, fornecedores e gente que nunca falou com a empresa. A
+                planilha exige exportar de propósito; aqui é um clique, então o
+                aviso fica no caminho do clique, não escondido na descrição. */}
+            <div
+              role="note"
+              className="flex items-start gap-2 rounded-md border border-warning-fg/30 bg-warning-bg p-3 text-sm"
+            >
+              <Warning size={18} weight="duotone" aria-hidden className="mt-0.5 shrink-0 text-warning-fg" />
+              <p>
+                {t(
+                  "Isto traz todos os contatos salvos no celular, inclusive os pessoais. Só mande campanha a quem autorizou receber.",
+                )}
+              </p>
+            </div>
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={sincronizar.isPending}>
                 {t("Cancelar")}

@@ -44,6 +44,7 @@
 import { audit as auditReal } from "@/lib/audit";
 import type { ContatoDoAparelho } from "@/lib/channels";
 import { phoneLookupVariants } from "@/lib/channels/phone-variants";
+import { ORIGEM_AGENDA_DO_CELULAR } from "@/lib/leads/origem-do-contato";
 import { logger } from "@/lib/logger";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
@@ -117,6 +118,13 @@ export interface AgendaDeps {
   upsertContato(e: { organizationId: string; telefone: string; chatId: string; notify: string | null }): Promise<string | null>;
   /** `contact.created` para o contato que NASCEU agora — o mesmo evento do import de planilha. */
   emitirContatoCriado(e: { organizationId: string; contactId: string; requestId: string }): Promise<void>;
+  /**
+   * Carimba `source = 'whatsapp_agenda'` nos contatos que NASCERAM nesta
+   * sincronização. A RPC do webhook grava `source = 'whatsapp'`, e sem o
+   * carimbo quem veio da agenda ficaria igual a quem mandou mensagem — a ficha
+   * e o filtro de origem não teriam como separar os dois (decisão do doc 158).
+   */
+  marcarOrigem(organizationId: string, contactIds: string[]): Promise<void>;
   /**
    * A trilha do gesto — o MESMO `audit()` que o resto do sistema escreve.
    *
@@ -233,6 +241,7 @@ export async function sincronizarAgendaDoCelular(
   resumo.ignorados = leitura.lidos - leitura.candidatos.length;
 
   const existentes = await telefonesExistentesEmBlocos(deps, e.organizationId, leitura.candidatos);
+  const criados: string[] = [];
 
   for (const candidato of leitura.candidatos) {
     if (resumo.importados >= TETO_DE_IMPORTACOES) {
@@ -257,6 +266,7 @@ export async function sincronizarAgendaDoCelular(
         continue;
       }
       resumo.importados += 1;
+      criados.push(id);
       // Reserva as variantes ANTES do evento: a próxima entrada de mesmo número
       // neste lote cai em "já existente" em vez de pagar a RPC de novo.
       for (const v of variantes) existentes.add(v);
@@ -277,6 +287,19 @@ export async function sincronizarAgendaDoCelular(
       // quando o transporte devolve 500 na centésima RPC.
       resumo.erros += 1;
       logger.warn("contacts.sync-agenda: contato não gravado (o lote seguiu)", {
+        organization_id: e.organizationId,
+        request_id: e.requestId,
+        detail: err instanceof Error ? err.message.slice(0, 160) : String(err),
+      });
+    }
+  }
+
+  for (let i = 0; i < criados.length; i += TELEFONES_POR_CONSULTA) {
+    try {
+      await deps.marcarOrigem(e.organizationId, criados.slice(i, i + TELEFONES_POR_CONSULTA));
+    } catch (err) {
+      // O contato já existe e não se desfaz; o que falta é só o carimbo.
+      logger.warn("contacts.sync-agenda: contatos criados sem a origem da agenda", {
         organization_id: e.organizationId,
         request_id: e.requestId,
         detail: err instanceof Error ? err.message.slice(0, 160) : String(err),
@@ -348,13 +371,25 @@ export function criarDepsDeAgenda(
           p_event_type: "contact.created",
           p_entity_kind: "contact",
           p_entity_id: contactId,
-          p_payload: { source: "whatsapp", has_phone: true, synced_from_phone: true },
+          p_payload: { source: ORIGEM_AGENDA_DO_CELULAR, has_phone: true, synced_from_phone: true },
           p_metadata: { request_id: requestId, actor_type: "user" },
           p_organization_id: organizationId,
         })
         .then(({ error }) => {
-          if (error) console.error("[contacts.sync-agenda] emit_event failed", error.message);
+          // Lança para o `catch` de quem chama, que já registra pelo logger.
+          if (error) throw new Error(error.message);
         });
+    },
+    marcarOrigem: async (organizationId, contactIds) => {
+      const { error } = await admin
+        .from("contacts")
+        .update({ source: ORIGEM_AGENDA_DO_CELULAR })
+        .eq("organization_id", organizationId)
+        // Só o que a RPC acabou de gravar como `whatsapp`: um contato que outro
+        // caminho criou com outra origem no meio do lote não é reescrito.
+        .eq("source", "whatsapp")
+        .in("id", contactIds);
+      if (error) throw new Error(error.message);
     },
     audit: (entry) => auditReal(entry),
   };

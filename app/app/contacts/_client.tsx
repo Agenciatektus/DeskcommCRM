@@ -27,6 +27,7 @@ import { NewContactDialog } from "@/components/contacts/NewContactDialog";
 import { ImportContactsDialog } from "@/components/contacts/ImportContactsDialog";
 import { SyncPhoneContactsDialog } from "@/components/contacts/SyncPhoneContactsDialog";
 import { TAG_DE_CLIENTE } from "@/lib/contacts/cliente";
+import { ORIGEM_AGENDA_DO_CELULAR } from "@/lib/leads/origem-do-contato";
 import { type ModoDeEtiqueta } from "@/lib/inbox/marcador-da-conversa";
 import { useActiveOrg, usePermission } from "@/hooks/auth/AuthProvider";
 import { MergeDialog } from "@/components/contacts/MergeDialog";
@@ -40,6 +41,7 @@ const SOURCE_OPTIONS = [
   { value: "site", label: "Site (landing page)" },
   { value: "nuvemshop", label: "Nuvemshop" },
   { value: "import_csv", label: "Importado (CSV)" },
+  { value: ORIGEM_AGENDA_DO_CELULAR, label: "Agenda do celular" },
   // Os dois valores que a atribuição de anúncio grava em `contacts.source`
   // (`PlataformaDeAnuncio` em lib/leads/atribuicao-de-anuncio.ts). Sem eles, o
   // contato que veio de um clique em anúncio existe no banco e não é
