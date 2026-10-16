@@ -11,12 +11,18 @@ export interface MessageTemplate {
   body: string;
   shortcut: string | null;
   owner_user_id: string | null;
-  /** "texto" ou "audio" (migration 0662). */
-  tipo: TipoDeRecurso;
+  /**
+   * "texto" ou "audio" (migration 0662).
+   *
+   * Opcional como `midias`: linha anterior à 0662 e fixture anterior ao PR vêm
+   * sem a chave, e as duas são "texto" — o default da coluna no banco. Quem lê
+   * trata a ausência com `?? "texto"`, e nenhum dos dois casos quebra.
+   */
+  tipo?: TipoDeRecurso;
   /** Caminho do arquivo no Storage — só para recursos de áudio. */
-  media_path: string | null;
-  media_mime: string | null;
-  media_size_bytes: number | null;
+  media_path?: string | null;
+  media_mime?: string | null;
+  media_size_bytes?: number | null;
   /**
    * As imagens que o próprio operador carregou no template (#2526).
    * Opcional de propósito: linha anterior à migration 0643 e fixture de teste

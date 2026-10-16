@@ -21,15 +21,21 @@ import { interpolateTemplate, type TemplateContact } from "@/lib/inbox/template-
 export const TIPOS_DE_RECURSO = ["texto", "audio"] as const;
 export type TipoDeRecurso = (typeof TIPOS_DE_RECURSO)[number];
 
-/** O subconjunto de `message_templates` que o compositor precisa conhecer. */
+/**
+ * O subconjunto de `message_templates` que o compositor precisa conhecer.
+ *
+ * `tipo` e os campos de mídia são OPCIONAIS de propósito, pela mesma razão de
+ * `MessageTemplate`: linha anterior à migration 0662 (e fixture anterior a ela)
+ * chega sem as chaves, e a ausência é "texto" — o default da coluna no banco.
+ */
 export interface Recurso {
   id: string;
   title: string;
   body: string;
-  tipo: TipoDeRecurso;
-  media_path: string | null;
-  media_mime: string | null;
-  media_size_bytes: number | null;
+  tipo?: TipoDeRecurso;
+  media_path?: string | null;
+  media_mime?: string | null;
+  media_size_bytes?: number | null;
 }
 
 /** Um áudio pronto para virar anexo pendente — descreve, não envia. */
@@ -55,7 +61,7 @@ export type PlanoDoRecurso =
   | { tipo: "texto"; texto: string }
   | { tipo: "audio"; anexo: AnexoDeRecurso };
 
-export function ehRecursoDeAudio(recurso: { tipo: TipoDeRecurso }): boolean {
+export function ehRecursoDeAudio(recurso: { tipo?: TipoDeRecurso }): boolean {
   return recurso.tipo === "audio";
 }
 
@@ -66,9 +72,9 @@ export function planoDoRecurso(recurso: Recurso, contato: TemplateContact): Plan
       anexo: {
         recursoId: recurso.id,
         titulo: recurso.title,
-        media_path: recurso.media_path,
-        media_mime: recurso.media_mime,
-        media_size_bytes: recurso.media_size_bytes,
+        media_path: recurso.media_path ?? null,
+        media_mime: recurso.media_mime ?? null,
+        media_size_bytes: recurso.media_size_bytes ?? null,
       },
     };
   }
