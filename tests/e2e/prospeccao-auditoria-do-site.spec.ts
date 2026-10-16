@@ -195,12 +195,16 @@ test.describe("Auditoria do site na fila de prospecção (#2703)", () => {
       .allTextContents();
     expect(ordemDepois[0]).toContain("Vitta");
 
-    // 4. detalhe no modal: ações presentes e habilitadas (o clique faria
+    // 4. detalhe no modal: ações presentes (Reanalisar habilitada; a prévia depende de agente) (o clique faria
     // rede/IA: fora do e2e).
     await linhaQuente.getByRole("button", { name: "Ver detalhes" }).click();
     const dialogo = page.getByRole("dialog");
     await expect(dialogo.getByRole("button", { name: "Reanalisar site" })).toBeEnabled();
-    await expect(dialogo.getByRole("button", { name: "Prévia da abordagem" })).toBeEnabled();
+    // A campanha semeada não tem agente e a organização de teste não tem agente
+    // padrão: o servidor não teria quem escrevesse a prévia, então o botão fica
+    // desligado e a janela diz o que fazer (mesma regra do unit A2/A3).
+    await expect(dialogo.getByRole("button", { name: "Prévia da abordagem" })).toBeDisabled();
+    await expect(dialogo.getByText("Escolha o agente na etapa 2 para ver a prévia.")).toBeVisible();
     await page.screenshot({ path: path.join(EVIDENCIA, "fila-com-auditoria.png"), fullPage: true });
   });
 });
