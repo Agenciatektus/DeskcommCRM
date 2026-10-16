@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { audit } from "@/lib/audit";
 import type pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -23,10 +24,15 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { assertProspectingDelivery } from "./guard";
 import { instrucaoDeAbordagemFria, montarDadosDeAbordagem, estrategiaDoCandidato } from "./estrategia-site";
-import { siteEfetivo } from "./site-efetivo";
+import {
+  INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN,
+  LIMITE_TENTATIVAS,
+  siteEfetivo,
+} from "./site-efetivo";
 import { previaValida } from "./previa";
 import { blocoVozVendedor, personalizacaoDaOrganizacao } from "./personalizar";
 import { campaignConfigSchema, type OfertaDaCampanha } from "./schema";
+import { prepararCandidatos } from "./preparo";
 import { ProspectingError } from "./provider";
 import { OrgNaoOperanteError } from "@/lib/organizacao/operante";
 import {
@@ -387,19 +393,65 @@ export async function sendNextCandidate(
   }
 }
 
-export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, _requestId?: string) {
+/**
+ * Organizações com candidato esperando o PREPARO AUTOMÁTICO (B2) e SEM campanha
+ * rodando nem busca ativa — as que a consulta do bloco com bloqueio não alcança:
+ * campanha em rascunho ou pausada. Barata de propósito: um `exists` que para no
+ * primeiro candidato pendente, e a régua `fn_org_operante` no SQL, antes do
+ * `limit 20` (mesma razão da primeira consulta: filtrar depois deixaria a org
+ * parada no topo da ordem para sempre).
+ *
+ * "Pendente" = marcada, ainda na fila, e (a) site na web sem veredito, ou
+ * (b) com veredito definitivo (ou sem site) e sem prévia numa campanha COM agente.
+ * É o espelho em SQL de `precisaDeRede`/`previaPorGerar`; quem decide de verdade
+ * é o preparo, em TS — esta consulta só escolhe quem vale a pena abrir.
+ */
+const ORGS_COM_PREPARO_PENDENTE =
+  "select pc.organization_id from prospecting_campaigns pc where pc.status in ('draft','paused') " +
+  "and public.fn_org_operante(pc.organization_id) " +
+  "and exists (select 1 from prospecting_candidates c where c.organization_id=pc.organization_id " +
+  "and c.campaign_id=pc.id and c.selected is not false and c.status in ('new','queued') and (" +
+  // (a) verificação por fazer: site na web sem veredito, ou provisório já elegível a nova tentativa
+  "(nullif(trim(c.data->>'website'), '') is not null and (c.data->'site' is null " +
+  `or (coalesce((c.data->'site'->>'provisorio')::boolean, false) ` +
+  `and coalesce(nullif(c.data->'site'->>'tentativas', '')::int, 0) < ${LIMITE_TENTATIVAS} ` +
+  `and coalesce(nullif(c.data->'site'->>'verificado_em', '')::timestamptz, 'epoch'::timestamptz) <= now() - interval '${INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN} minutes'))) ` +
+  // (b) prévia por gerar: campanha com agente, veredito definitivo (ou sem site) e nenhuma prévia
+  "or (pc.config->>'agent_id' is not null and c.data->'previa' is null " +
+  "and ((c.data->'site' is not null and not coalesce((c.data->'site'->>'provisorio')::boolean, false)) " +
+  "or (c.data->'site' is null and nullif(trim(c.data->>'website'), '') is null))))) " +
+  "group by pc.organization_id order by min(pc.updated_at) limit 20";
+
+/** Teto de tempo do preparo de UMA organização dentro do tick. */
+const PRAZO_DO_PREPARO_MS = 100_000;
+
+export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, requestId?: string) {
   // Organização parada (suspensa, redigida, arquivada) não prospecta: a busca é
   // paga e a abordagem sai para fora. O corte é no SQL, antes do `limit 20`:
   // a ordem é `min(updated_at)`, e a org pulada nunca toca `updated_at` —
   // filtrar depois a deixaria no topo para sempre. A régua é a SQL
   // `fn_org_operante` (mesma de `organizations.status = 'active'`) — não se
   // trafega a lista de ids das paradas na consulta (cortaria em `max_rows`).
-  // A auditoria de site NÃO roda mais por aqui: com 100+ leads ela segurava o
-  // lock por minutos (409 na tela) e gastava rede sem ninguém olhando. Quem
-  // dispara é a pessoa, pelo botão "Verificar sites" (ação `verificar_sites`).
+  //
+  // A verificação de site e a prévia (B2) rodam por aqui, no PREPARO AUTOMÁTICO
+  // (`prepararCandidatos`) — FORA do bloqueio da organização, com teto por rodada
+  // e bloqueio próprio. Dentro do bloqueio elas seguravam a organização por
+  // minutos (409 na tela) com 100+ leads; fora, o envio e a tela não esperam.
   const { rows: organizations } = await pool.query<{ organization_id: string }>(
     "select pc.organization_id from prospecting_campaigns pc where (pc.status='running' or pc.search_status in ('starting','running')) and public.fn_org_operante(pc.organization_id) group by pc.organization_id order by min(pc.updated_at) limit 20",
   );
+  // Segunda consulta, à parte (a primeira não muda): quem só tem rascunho/pausada.
+  // Fail-open: se ela falhar, as organizações que já rodam seguem como antes.
+  let apenasPreparo: string[] = [];
+  try {
+    apenasPreparo = (
+      await pool.query<{ organization_id: string }>(ORGS_COM_PREPARO_PENDENTE)
+    ).rows.map((r) => r.organization_id);
+  } catch (error) {
+    logger.error("[prospecting] consulta das organizações a preparar falhou", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   const deadline = Date.now() + 180000;
   let processed = 0;
   for (const { organization_id: org } of organizations) {
@@ -436,8 +488,8 @@ export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, _req
             );
           }
         }
-        // (A auditoria de site saiu daqui: ver `verificar_sites` na rota —
-        // sob demanda, com teto de lote. O tick não faz fetch de site.)
+        // (Nada de fetch de site aqui dentro: a verificação e a prévia são do
+        // `prepararCandidatos`, depois deste bloco e fora do bloqueio.)
         const c = (
           await db.query<Campaign>(
             "select * from prospecting_campaigns where organization_id=$1 and status='running'",
@@ -515,6 +567,29 @@ export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, _req
           // porque parece cobertura. Agora vai a causa.
           error: error instanceof Error ? error.message : String(error),
         });
+    }
+  }
+  // Fase do PREPARO, DEPOIS de todos os blocos com bloqueio: ela é a parte lenta
+  // (rede + modelo) e não pode comer o prazo do tick antes de uma organização
+  // posterior ter a vez de enviar. Fora do bloqueio de cada organização; o
+  // preparo tem o bloqueio próprio, o teto e o prazo dele. Uma falha daqui
+  // nunca impede as outras organizações (fail-open).
+  const paraPreparar = [...new Set([...organizations.map((o) => o.organization_id), ...apenasPreparo])];
+  for (const org of paraPreparar) {
+    if (Date.now() >= deadline) break;
+    try {
+      await prepararCandidatos(
+        pool,
+        admin,
+        org,
+        requestId ?? randomUUID(),
+        Math.min(deadline, Date.now() + PRAZO_DO_PREPARO_MS),
+      );
+    } catch (error) {
+      logger.error("[prospecting] preparo automático falhou", {
+        organization_id: org,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
   return { processed };

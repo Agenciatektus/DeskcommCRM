@@ -15698,6 +15698,19 @@ export const DICIONARIO: Traducoes = {
   "Automações e integrações (N8N)": { es: "Automatizaciones e integraciones (N8N)" },
   "Site reanalisado.": { es: "Sitio reanalizado." },
   "Gerando prévia…": { es: "Generando vista previa…" },
+  // B2 — preparo automático da prospecção (verificação do site e prévia, sozinhas).
+  "Verificar agora": { es: "Verificar ahora" },
+  "Verificação de sites rodou uma rodada.": { es: "La verificación de sitios corrió una ronda." },
+  "Não foi possível gerar a prévia.": { es: "No fue posible generar la vista previa." },
+  "Escolha o agente na etapa 2 para ver a prévia.": {
+    es: "Elige el agente en el paso 2 para ver la vista previa.",
+  },
+  "Sites verificados:": { es: "Sitios verificados:" },
+  "Prévias:": { es: "Vistas previas:" },
+  "Prévia: escolha o agente na etapa 2": { es: "Vista previa: elige el agente en el paso 2" },
+  "Prévia desatualizada: o site foi verificado de novo. Abra Ver detalhes e gere outra.": {
+    es: "Vista previa desactualizada: el sitio se verificó de nuevo. Abre Ver detalles y genera otra.",
+  },
   // #2498 — busca dentro do seletor de etiquetas do Inbox.
   "Buscar etiqueta": { es: "Buscar etiquetas" },
   "Nenhuma etiqueta com esse texto": { es: "Ninguna etiqueta con ese texto" },

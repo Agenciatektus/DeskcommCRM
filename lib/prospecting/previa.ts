@@ -25,6 +25,7 @@
 import { z } from "zod";
 
 import { ehAgregador, ehSemSite, type SiteEnrichment } from "./site-classify";
+import { siteEfetivo } from "./site-efetivo";
 
 /** O que a tela guardou: a copy + a âncora da auditoria + quando + o agente que a escreveu. */
 export const previaSalvaSchema = z.object({
@@ -91,4 +92,32 @@ export async function gravarPrevia(
     "update prospecting_candidates set data = coalesce(data,'{}'::jsonb) || jsonb_build_object('previa',$4::jsonb), updated_at=now() where organization_id=$1 and campaign_id=$2 and id=$3",
     [args.organizationId, args.campaignId, args.candidateId, JSON.stringify(args.previa)],
   );
+}
+
+/**
+ * A prévia ainda está POR GERAR para este candidato? É a régua do preparo
+ * automático (`preparo.ts`) E da tela (contador, "Gerando prévia…", recarga
+ * automática): as duas leem esta função, então a tela nunca promete uma prévia
+ * que o servidor não vai gerar — nem fica recarregando à espera dela.
+ *
+ * Verdadeiro só quando TODAS valem: empresa marcada, ainda na fila (`new`/
+ * `queued` — quem já foi abordado não ganha prévia), SEM prévia nenhuma (a
+ * vencida não conta como "por gerar": regerar custa IA e o operador a refaz
+ * pelo botão) e com veredito efetivo DEFINITIVO. Provisório ainda pode mudar —
+ * gastar IA nele é pagar por uma copy que o próximo veredito invalida; e sem
+ * veredito (site na web ainda não auditado) a espera é pela verificação.
+ */
+export function previaPorGerar(
+  c: {
+    data: DadosDaPrevia;
+    status?: string | null;
+    selected?: boolean | null;
+  },
+  agoraIso: string,
+): boolean {
+  if (c.selected === false) return false;
+  if (c.status !== "new" && c.status !== "queued") return false;
+  if (c.data.previa) return false;
+  const site = siteEfetivo(c.data, agoraIso);
+  return !!site && !(site.provisorio ?? false);
 }

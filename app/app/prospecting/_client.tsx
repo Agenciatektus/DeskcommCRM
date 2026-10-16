@@ -13,6 +13,7 @@ import { apiClient } from "@/lib/api/client";
 import { useT } from "@/hooks/i18n/useT";
 import {
   RAZAO_NAO_SELECIONADA,
+  campaignConfigSchema,
   safePublicLink,
   type CampaignConfig,
   type Prospect,
@@ -26,6 +27,7 @@ import {
   type OfertaDaCampanha,
 } from "@/lib/prospecting/estrategia-site";
 import { precisaDeRede, siteEfetivo } from "@/lib/prospecting/site-efetivo";
+import { previaPorGerar, previaValida } from "@/lib/prospecting/previa";
 
 type Campaign = {
   id: string;
@@ -99,6 +101,87 @@ const emptyConfig: CampaignConfig = {
   // Campanha nova nasce no modo recomendado; a configuração já gravada manda no que existe.
   funnel_entry: "on_send",
 };
+/** Campanhas que o preparo automático atende (`prepararCandidatos`). */
+const STATUS_COM_PREPARO = new Set(["draft", "running", "paused"]);
+const TRECHO_DA_PREVIA = 140;
+
+/**
+ * A campanha tem agente configurado a ponto de o servidor gerar prévia? É o MESMO
+ * `safeParse` que `gerarPreviaDoCandidato` faz: a tela só promete "Gerando
+ * prévia…" onde o servidor de fato vai gerar — config parcial (sem agente) não.
+ */
+function campanhaGeraPrevia(c: Campaign): boolean {
+  return !!c.config && campaignConfigSchema.safeParse(c.config).success;
+}
+
+/**
+ * Ainda há o que o preparo automático faz — site por verificar ou prévia por
+ * gerar? Governa o recarregamento: enquanto houver, a lista se completa sozinha;
+ * quando os dois zeram, o polling PARA (recarregar a cada 10 s para sempre seria
+ * tráfego sem leitor). Só entram as empresas marcadas de campanhas que o servidor
+ * atende — desmarcada e campanha concluída nunca zerariam.
+ */
+function algoPorPreparar(estado: State, agoraIso: string): boolean {
+  const atendidas = new Map(
+    estado.campaigns
+      .filter((c) => STATUS_COM_PREPARO.has(c.status))
+      .map((c) => [c.id, campanhaGeraPrevia(c)] as const),
+  );
+  return estado.candidates.some((c) => {
+    const comAgente = atendidas.get(c.campaign_id);
+    if (comAgente === undefined || c.selected === false) return false;
+    if (precisaDeRede(c.data, agoraIso)) return true;
+    return (
+      comAgente &&
+      previaPorGerar({ data: c.data, status: c.status ?? c.progress, selected: c.selected }, agoraIso)
+    );
+  });
+}
+
+/** O resultado do preparo na linha: o trecho da prévia, ou o que falta para ela sair. */
+function PreviaNaLinha({
+  candidato,
+  temAgente,
+  agoraIso,
+}: {
+  candidato: Candidate;
+  temAgente: boolean;
+  agoraIso: string;
+}) {
+  const t = useT();
+  const pronta = previaValida(candidato.data);
+  if (pronta) {
+    const trecho =
+      pronta.texto.length > TRECHO_DA_PREVIA
+        ? `${pronta.texto.slice(0, TRECHO_DA_PREVIA).trimEnd()}…`
+        : pronta.texto;
+    return (
+      <p className="mt-2 text-xs text-muted-foreground" title={pronta.texto}>
+        {trecho}
+      </p>
+    );
+  }
+  if (candidato.selected === false) return null;
+  if (!temAgente)
+    return (
+      <p className="mt-2 text-xs text-muted-foreground">
+        {t("Prévia: escolha o agente na etapa 2")}
+      </p>
+    );
+  // Guardada, mas a auditoria em que se apoiava mudou: o servidor não a refaz
+  // sozinho (custa IA), então avisar é melhor que parecer "gerando" para sempre.
+  if (candidato.data.previa)
+    return (
+      <p className="mt-2 text-xs text-muted-foreground">
+        {t("Prévia desatualizada: o site foi verificado de novo. Abra Ver detalhes e gere outra.")}
+      </p>
+    );
+  const status = candidato.status ?? candidato.progress;
+  if (previaPorGerar({ data: candidato.data, status, selected: candidato.selected }, agoraIso))
+    return <p className="mt-2 text-xs text-muted-foreground">{t("Gerando prévia…")}</p>;
+  return null;
+}
+
 export function ProspectingClient() {
   const t = useT();
   // A régua da leitura (contador, score, veredito da linha) usa o MESMO relógio
@@ -116,14 +199,12 @@ export function ProspectingClient() {
           `/api/v1/prospecting${ordenar === "score" ? "?ordenar=score" : ""}`,
         )
       ).data,
-    // A fila se completa sozinha enquanto houver "A verificar" (o tick
-    // enriquece em levas); sem pendência, o polling para — recarregar a
-    // cada 10s para sempre seria tráfego sem leitor.
+    // A fila se completa sozinha enquanto o preparo automático tiver o que fazer
+    // (site por verificar OU prévia por gerar); com os dois zerados, o polling
+    // para — recarregar a cada 10s para sempre seria tráfego sem leitor.
     refetchInterval: (consulta) => {
       const estado = consulta.state.data as State | undefined;
-      return estado?.candidates.some((c) => precisaDeRede(c.data, new Date().toISOString()))
-        ? 10000
-        : false;
+      return estado && algoPorPreparar(estado, new Date().toISOString()) ? 10000 : false;
     },
   });
   const data = query.data;
@@ -324,7 +405,7 @@ export function ProspectingClient() {
   // Critério do #2048, medido sobre as linhas que a caixa pode alterar agora, não a fila inteira.
   const noneSelected = elegiveis.every((c) => c.selected === false);
   const desmarcadas = candidates.filter((c) => c.selected === false);
-  /** Quantas empresas MARCADAS ainda esperam a auditoria (botão "Verificar sites").
+  /** Quantas empresas MARCADAS ainda esperam a auditoria (botão "Verificar agora").
    * Só conta quem PRECISA DE REDE: quem não tem site já tem veredito derivado
    * (`siteEfetivo`), não há o que buscar, e contá-lo dava um número que nunca
    * zerava. Desmarcada não entra: ela não vai ser abordada, e a auditoria existe
@@ -332,6 +413,13 @@ export function ProspectingClient() {
   const pendentesDeSite = candidates.filter(
     (c) => c.selected !== false && precisaDeRede(c.data, agora),
   ).length;
+  // O andamento do preparo automático, só sobre as marcadas (a desmarcada não será
+  // abordada, então não entra em nenhuma das duas contas). Mesmas funções puras
+  // que o servidor e o recarregamento usam.
+  const temAgenteNaCampanha = !!campaign && campanhaGeraPrevia(campaign);
+  const marcadas = candidates.filter((c) => c.selected !== false);
+  const sitesVerificados = marcadas.length - pendentesDeSite;
+  const previasProntas = marcadas.filter((c) => previaValida(c.data)).length;
   /**
    * O que o botão "Excluir desmarcadas" realmente apaga. Espelha o `where` do servidor: sem
    * negócio nem conversa (o que já virou registro do CRM não é daqui) e só o que o operador
@@ -1231,6 +1319,15 @@ export function ProspectingClient() {
                             "Encontrado é diferente de qualificado. A qualificação depende do que for confirmado na conversa.",
                           )}
                         </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {t("Sites verificados:")} {sitesVerificados} {t("de")} {marcadas.length}
+                          {temAgenteNaCampanha && (
+                            <>
+                              {" · "}
+                              {t("Prévias:")} {previasProntas} {t("de")} {marcadas.length}
+                            </>
+                          )}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Label htmlFor="prospecting-ordenar">{t("Ordenar")}</Label>
@@ -1296,7 +1393,7 @@ export function ProspectingClient() {
                               )
                             }
                           >
-                            {t("Verificar sites")} ({pendentesDeSite})
+                            {t("Verificar agora")} ({pendentesDeSite})
                           </Button>
                           {desmarcadas.length > 0 && (
                             <button
@@ -1455,6 +1552,11 @@ export function ProspectingClient() {
                                 sobrescritaVocabulario={data?.personalizacao?.vocabulario ?? null}
                                 onReanalisar={reanalisarSite}
                                 onPrevia={preverAbordagem}
+                              />
+                              <PreviaNaLinha
+                                candidato={c}
+                                temAgente={temAgenteNaCampanha}
+                                agoraIso={agora}
                               />
                             </td>
                             <td className="p-4 align-top">

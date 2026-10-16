@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
 /**
- * Tela da Prospecção (ORDEM A): o contador do "Verificar sites" (A4), o erro da
+ * Tela da Prospecção (ORDEM A): o contador do "Verificar agora" (A4), o erro da
  * prévia que fica na janela e some ao trocar de campanha (A2) e o painel de
  * configuração que não pode sumir num rascunho com config parcial (A3).
  */
@@ -175,10 +175,10 @@ afterEach(cleanup);
 describe("A4: contador da verificação e o sem-site derivado", () => {
   it("conta só quem precisa de rede e não deixa o sem-site em 'A verificar'", async () => {
     openPage();
-    const botao = await screen.findByRole("button", { name: /Verificar sites/ });
+    const botao = await screen.findByRole("button", { name: /Verificar agora/ });
     // c1 (site na web, sem veredito) + c4 (provisório já elegível). c2 é derivado
     // sem-site; c3 é definitivo; c5 está desmarcado.
-    expect(botao).toHaveTextContent("Verificar sites (2)");
+    expect(botao).toHaveTextContent("Verificar agora (2)");
 
     const semSite = screen.getByRole("row", { name: /Sem site nenhum/ });
     expect(within(semSite).queryByText("A verificar")).toBeNull();
@@ -225,5 +225,225 @@ describe("A3: painel de configuração por estado do rascunho", () => {
     openPage();
     expect(await screen.findByLabelText("Agente de IA")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Configurar por conversa" })).toBeNull();
+  });
+});
+
+/**
+ * H (ORDEM B2): o preparo automático aparece na lista. A verificação do site e a
+ * prévia saem sozinhas, em segundo plano; a tela mostra o andamento e o resultado
+ * e para de recarregar quando não há mais nada por fazer.
+ */
+const TEXTO_LONGO =
+  "Olá! Vi que a clínica tem nota alta no Google e queria entender como vocês recebem novos pacientes hoje. " +
+  "Posso te mostrar em dois minutos como outras clínicas da região organizaram o atendimento no WhatsApp?";
+
+const PREVIA_VALIDA = {
+  texto: TEXTO_LONGO,
+  baseada_em: `site-ok@${SITE_OK.verificado_em}`,
+  gerada_em: "2026-10-16T10:00:00.000Z",
+  agente_id: AGENT,
+};
+
+function estado(candidates: unknown[]) {
+  return { ...fixture(), candidates };
+}
+
+describe("H: o preparo automático na lista", () => {
+  it("mostra um TRECHO da prévia (140 caracteres) com o texto inteiro no title", async () => {
+    api.get.mockImplementation(async () => ({
+      data: estado([
+        candidato("p1", COMPLETA, {
+          ...empresa("Com prévia pronta", "https://saudavel.test/", SITE_OK),
+          previa: PREVIA_VALIDA,
+        }),
+      ]),
+    }));
+    openPage();
+    const linha = await screen.findByRole("row", { name: /Com prévia pronta/ });
+    const trecho = within(linha).getByTitle(TEXTO_LONGO);
+    expect(trecho).toHaveTextContent(`${TEXTO_LONGO.slice(0, 140).trimEnd()}…`);
+    expect(trecho.textContent!.length).toBeLessThan(TEXTO_LONGO.length);
+    expect(within(linha).queryByText("Gerando prévia…")).toBeNull();
+  });
+
+  it("'Gerando prévia…' quando a campanha tem agente e o veredito já é definitivo, sem prévia", async () => {
+    api.get.mockImplementation(async () => ({
+      data: estado([
+        candidato("g1", COMPLETA, empresa("Esperando prévia", "https://saudavel.test/", SITE_OK)),
+        candidato("g2", COMPLETA, empresa("Sem site esperando", null, null)),
+        // Ainda sem veredito: a espera é pela VERIFICAÇÃO, não se promete prévia.
+        candidato("g3", COMPLETA, empresa("Esperando verificação", "https://a.test/", null)),
+      ]),
+    }));
+    openPage();
+    const g1 = await screen.findByRole("row", { name: /Esperando prévia/ });
+    expect(within(g1).getByText("Gerando prévia…")).toBeVisible();
+    const g2 = screen.getByRole("row", { name: /Sem site esperando/ });
+    expect(within(g2).getByText("Gerando prévia…")).toBeVisible();
+    const g3 = screen.getByRole("row", { name: /Esperando verificação/ });
+    expect(within(g3).queryByText("Gerando prévia…")).toBeNull();
+  });
+
+  it("campanha sem agente: 'Prévia: escolha o agente na etapa 2' e nunca 'Gerando prévia…'", async () => {
+    openPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Imobiliária parcial/ }));
+    const linha = await screen.findByRole("row", { name: /Da campanha parcial/ });
+    expect(within(linha).getByText("Prévia: escolha o agente na etapa 2")).toBeVisible();
+    expect(within(linha).queryByText("Gerando prévia…")).toBeNull();
+  });
+
+  it("prévia que venceu (o site foi verificado de novo) não é mostrada como pronta nem como 'gerando'", async () => {
+    api.get.mockImplementation(async () => ({
+      data: estado([
+        candidato("v1", COMPLETA, {
+          ...empresa("Prévia vencida", "https://saudavel.test/", SITE_OK),
+          previa: { ...PREVIA_VALIDA, baseada_em: "site-ok@2020-01-01T00:00:00.000Z" },
+        }),
+      ]),
+    }));
+    openPage();
+    const linha = await screen.findByRole("row", { name: /Prévia vencida/ });
+    expect(within(linha).queryByTitle(TEXTO_LONGO)).toBeNull();
+    expect(within(linha).queryByText("Gerando prévia…")).toBeNull();
+    expect(within(linha).getByText(/Prévia desatualizada/)).toBeVisible();
+  });
+
+  it("contadores 'x de y' contam só as empresas marcadas", async () => {
+    api.get.mockImplementation(async () => ({
+      data: estado([
+        // verificada + com prévia
+        candidato("k1", COMPLETA, {
+          ...empresa("K1", "https://saudavel.test/", SITE_OK),
+          previa: PREVIA_VALIDA,
+        }),
+        // verificada, sem prévia
+        candidato("k2", COMPLETA, empresa("K2", "https://saudavel.test/", SITE_OK)),
+        // sem site na web: verificada (derivado), sem prévia
+        candidato("k3", COMPLETA, empresa("K3", null, null)),
+        // ainda por verificar
+        candidato("k4", COMPLETA, empresa("K4", "https://a.test/", null)),
+        // desmarcada: fora das duas contas
+        candidato("k5", COMPLETA, empresa("K5", "https://e.test/", null), false),
+      ]),
+    }));
+    openPage();
+    expect(await screen.findByText(/Sites verificados:/)).toHaveTextContent(
+      "Sites verificados: 3 de 4 · Prévias: 1 de 4",
+    );
+  });
+
+  it("campanha sem agente conta só os sites (a prévia não tem como sair)", async () => {
+    openPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Imobiliária parcial/ }));
+    const contador = await screen.findByText(/Sites verificados:/);
+    expect(contador).toHaveTextContent("Sites verificados: 0 de 1");
+    expect(contador).not.toHaveTextContent("Prévias");
+  });
+
+  it("o botão manual 'Prévia da abordagem' continua no detalhe", async () => {
+    openPage();
+    const linha = await screen.findByRole("row", { name: /Com site saudável/ });
+    fireEvent.click(within(linha).getByRole("button", { name: "Ver detalhes" }));
+    const modal = await screen.findByRole("dialog");
+    expect(within(modal).getByRole("button", { name: "Prévia da abordagem" })).toBeEnabled();
+  });
+});
+
+describe("H: recarrega sozinha enquanto há o que preparar, e para quando zera", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const passar = (ms: number) =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+
+  it("com tudo pronto (sites verificados e prévias geradas) NÃO recarrega", async () => {
+    api.get.mockImplementation(async () => ({
+      data: estado([
+        candidato("r1", COMPLETA, {
+          ...empresa("R1", "https://saudavel.test/", SITE_OK),
+          previa: PREVIA_VALIDA,
+        }),
+        candidato("r2", COMPLETA, {
+          ...empresa("R2", null, null),
+          previa: { ...PREVIA_VALIDA, baseada_em: "sem-site@derivado" },
+        }),
+      ]),
+    }));
+    openPage();
+    await passar(100);
+    expect(api.get).toHaveBeenCalledTimes(1);
+    await passar(60_000);
+    expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("com prévia por gerar recarrega a cada 10 s e PARA quando as prévias chegam", async () => {
+    const pendente = estado([
+      candidato("s1", COMPLETA, empresa("S1", "https://saudavel.test/", SITE_OK)),
+    ]);
+    const pronto = estado([
+      candidato("s1", COMPLETA, {
+        ...empresa("S1", "https://saudavel.test/", SITE_OK),
+        previa: PREVIA_VALIDA,
+      }),
+    ]);
+    api.get.mockResolvedValueOnce({ data: pendente }).mockResolvedValue({ data: pronto });
+    openPage();
+    await passar(100);
+    expect(api.get).toHaveBeenCalledTimes(1);
+    await passar(10_000);
+    expect(api.get).toHaveBeenCalledTimes(2); // recarregou: havia prévia por gerar
+    await passar(60_000);
+    expect(api.get).toHaveBeenCalledTimes(2); // e parou: os dois contadores zeraram
+  });
+
+  it("com site por verificar recarrega, e para quando o veredito (e a prévia) chegam", async () => {
+    const pendente = estado([candidato("v1", COMPLETA, empresa("V1", "https://a.test/", null))]);
+    const verificado = estado([
+      candidato("v1", COMPLETA, {
+        ...empresa("V1", "https://a.test/", SITE_OK),
+        previa: PREVIA_VALIDA,
+      }),
+    ]);
+    api.get.mockResolvedValueOnce({ data: pendente }).mockResolvedValue({ data: verificado });
+    openPage();
+    await passar(100);
+    await passar(10_000);
+    expect(api.get).toHaveBeenCalledTimes(2);
+    await passar(60_000);
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("campanha sem agente não fica recarregando à espera de prévia que não vem", async () => {
+    api.get.mockImplementation(async () => ({
+      data: estado([
+        candidato("n1", PARCIAL, empresa("N1", null, null)),
+        candidato("n2", PARCIAL, empresa("N2", "https://saudavel.test/", SITE_OK)),
+      ]),
+    }));
+    openPage();
+    await passar(100);
+    await passar(60_000);
+    expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("desmarcada e já abordada não seguram o recarregamento", async () => {
+    api.get.mockImplementation(async () => ({
+      data: estado([
+        candidato("d1", COMPLETA, empresa("D1", "https://saudavel.test/", SITE_OK), false),
+        {
+          ...candidato("d2", COMPLETA, empresa("D2", "https://saudavel.test/", SITE_OK)),
+          status: "sent",
+        },
+      ]),
+    }));
+    openPage();
+    await passar(100);
+    await passar(60_000);
+    expect(api.get).toHaveBeenCalledTimes(1);
   });
 });

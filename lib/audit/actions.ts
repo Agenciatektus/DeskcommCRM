@@ -1153,6 +1153,11 @@ export const AUDIT_ACTIONS = [
   // (`data.previa`) para o tick reusar — deixou de ser somente leitura, logo
   // tem trilha. `resource_id` = o candidato; o TEXTO não entra no metadata.
   "prospecting.preview_saved",
+  // B2 (spec 24): o PREPARO AUTOMÁTICO gerou prévias sozinho (tick, sem clique).
+  // UMA linha por rodada e só quando ≥1 prévia foi gravada — rodada que não gerou
+  // nada não é mutação. Metadata: contagens e ids de campanha; o TEXTO nunca entra.
+  // Consome crédito de IA por prévia, daí a trilha: responde "por que o gasto subiu".
+  "prospecting.previews_generated",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

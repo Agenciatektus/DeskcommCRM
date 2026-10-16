@@ -1,10 +1,12 @@
 /**
- * Enriquecimento de sites pendentes dentro do `tickProspecting` (spec 24, §3.2).
+ * Enriquecimento de sites pendentes (spec 24, §3.2).
  *
- * Posição proposital: depois de `synchronizeSearch` materializar os candidatos
- * e ANTES de `sendNextCandidate` consumir quota/LLM — a auditoria já está em
- * `data` quando a abordagem monta o prompt. Roda no lock por org já segurado,
- * reusa o `PoolClient`, e respeita o deadline do tick como `worker.ts:375`.
+ * Quem chama (B2): o PREPARO AUTOMÁTICO do tick (`preparo.ts`), FORA do bloqueio
+ * da organização e sob bloqueio próprio, e o botão "Verificar agora" (rota
+ * `verificar_sites`). Recebe qualquer cliente que fale `query` — não exige um
+ * `PoolClient` inteiro, porque cada gravação aqui é um merge atômico de UMA chave
+ * (`data || jsonb_build_object('site', …)`) e não depende de transação nem de lock.
+ * Respeita o `deadline` recebido.
  *
  * Fail-open: erro aqui nunca pausa campanha, muda `status` ou atrasa
  * `next_send_at`. Candidato não enriquecido tenta de novo no próximo tick;
@@ -22,7 +24,7 @@ import {
 } from "@/lib/prospecting/site-fetch";
 
 /** Teto por org/rodada: 6 paralelos × ~1s médio medido cabem no deadline. */
-const TETO_POR_RODADA = 30;
+export const TETO_POR_RODADA = 30;
 
 export interface ResumoEnriquecimento {
   enriquecidos: number;
@@ -38,11 +40,13 @@ export interface ResumoEnriquecimento {
  * houve efeito.
  */
 export async function enriquecerSitesPendentes(
-  db: pg.PoolClient,
+  db: Pick<pg.PoolClient, "query">,
   org: string,
   requestId: string,
   deadline: number,
   campanhaId?: string,
+  /** Teto de candidatos de rede nesta chamada (padrão: `TETO_POR_RODADA`, 30). */
+  teto: number = TETO_POR_RODADA,
 ): Promise<ResumoEnriquecimento> {
   const vazio: ResumoEnriquecimento = { enriquecidos: 0, classes: {} };
   let curados = 0;
@@ -89,7 +93,7 @@ export async function enriquecerSitesPendentes(
         "and coalesce(nullif(data->'site'->>'tentativas', '')::int, 0) < $3 " +
         "and coalesce(nullif(data->'site'->>'verificado_em','')::timestamptz, 'epoch'::timestamptz) <= now() - make_interval(mins => $4))) " +
         "order by created_at limit $2",
-      [org, TETO_POR_RODADA, LIMITE_TENTATIVAS, INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN, campanhaId ?? null],
+      [org, Math.min(Math.max(teto, 0), TETO_POR_RODADA), LIMITE_TENTATIVAS, INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN, campanhaId ?? null],
     );
     rows = resultado.rows;
   } catch (error) {
