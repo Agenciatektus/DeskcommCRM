@@ -27,6 +27,7 @@ import {
   type OfertaDaCampanha,
 } from "@/lib/prospecting/estrategia-site";
 import { precisaDeRede, siteEfetivo } from "@/lib/prospecting/site-efetivo";
+import { opcoesDoPreparo } from "@/lib/prospecting/opcoes-do-preparo";
 import { previaPorGerar, previaValida } from "@/lib/prospecting/previa";
 
 type Campaign = {
@@ -36,7 +37,7 @@ type Campaign = {
   search_status: string;
   error: string | null;
   config: CampaignConfig | null;
-  search: { niche: string; location: string } | null;
+  search: ({ niche: string; location: string } & Record<string, unknown>) | null;
   result_count: number;
   skipped_count: number;
   cost_usd: string | null;
@@ -115,6 +116,7 @@ const TRECHO_DA_PREVIA = 140;
 function campanhaGeraPrevia(c: Campaign, previaPadrao: boolean): boolean {
   // Campanha sem agente (busca nova) também gera: o servidor usa o agente PADRÃO
   // da organização (`config-padrao.ts`) — se existe um (`previa_padrao`).
+  if (!opcoesDoPreparo(c.search).gerarPrevia) return false;
   return previaPadrao || (!!c.config && campaignConfigSchema.safeParse(c.config).success);
 }
 
@@ -129,14 +131,23 @@ function algoPorPreparar(estado: State, agoraIso: string): boolean {
   const atendidas = new Map(
     estado.campaigns
       .filter((c) => STATUS_COM_PREPARO.has(c.status))
-      .map((c) => [c.id, campanhaGeraPrevia(c, estado.previa_padrao === true)] as const),
+      .map(
+        (c) =>
+          [
+            c.id,
+            {
+              avalia: opcoesDoPreparo(c.search).avaliarSite,
+              gera: campanhaGeraPrevia(c, estado.previa_padrao === true),
+            },
+          ] as const,
+      ),
   );
   return estado.candidates.some((c) => {
-    const comAgente = atendidas.get(c.campaign_id);
-    if (comAgente === undefined || c.selected === false) return false;
-    if (precisaDeRede(c.data, agoraIso)) return true;
+    const campanha = atendidas.get(c.campaign_id);
+    if (campanha === undefined || c.selected === false) return false;
+    if (campanha.avalia && precisaDeRede(c.data, agoraIso)) return true;
     return (
-      comAgente &&
+      campanha.gera &&
       previaPorGerar({ data: c.data, status: c.status ?? c.progress, selected: c.selected }, agoraIso)
     );
   });
@@ -146,10 +157,13 @@ function algoPorPreparar(estado: State, agoraIso: string): boolean {
 function PreviaNaLinha({
   candidato,
   temAgente,
+  previaDesligada,
   agoraIso,
 }: {
   candidato: Candidate;
   temAgente: boolean;
+  /** O interruptor "Gerar a prévia" desta busca está desligado: ninguém a gera sozinho. */
+  previaDesligada: boolean;
   agoraIso: string;
 }) {
   const t = useT();
@@ -166,6 +180,12 @@ function PreviaNaLinha({
     );
   }
   if (candidato.selected === false) return null;
+  if (previaDesligada)
+    return (
+      <p className="mt-2 text-xs text-muted-foreground">
+        {t("Prévia desligada nesta busca: o agente escreve a mensagem na hora do envio.")}
+      </p>
+    );
   if (!temAgente)
     return (
       <p className="mt-2 text-xs text-muted-foreground">
@@ -224,6 +244,8 @@ export function ProspectingClient() {
   const [limit, setLimit] = useState(20);
   const [budget, setBudget] = useState(1);
   const [enrich, setEnrich] = useState(true);
+  const [avaliarSite, setAvaliarSite] = useState(true);
+  const [gerarPrevia, setGerarPrevia] = useState(true);
   const [campaignDrafts, setCampaignDrafts] = useState<Record<string, CampaignConfig>>({});
   const [manualCampaigns, setManualCampaigns] = useState<Record<string, boolean>>({});
   const [createdAgents, setCreatedAgents] = useState<{ id: string; name: string }[]>([]);
@@ -422,6 +444,7 @@ export function ProspectingClient() {
   // que o servidor e o recarregamento usam.
   const temAgenteNaCampanha = !!campaign && campanhaGeraPrevia(campaign, data?.previa_padrao === true);
   const marcadas = candidates.filter((c) => c.selected !== false);
+  const opcoes = opcoesDoPreparo(campaign?.search);
   const sitesVerificados = marcadas.length - pendentesDeSite;
   const previasProntas = marcadas.filter((c) => previaValida(c.data)).length;
   /**
@@ -627,7 +650,7 @@ export function ProspectingClient() {
               className="mt-4 space-y-4"
               onSubmit={async (e) => {
                 e.preventDefault();
-                const fingerprint = JSON.stringify([niche, location, limit, budget, enrich]);
+                const fingerprint = JSON.stringify([niche, location, limit, budget, enrich, avaliarSite, gerarPrevia]);
                 if (searchAttempt.current?.fingerprint !== fingerprint)
                   searchAttempt.current = { fingerprint, id: randomId() };
                 const success = await perform(
@@ -641,6 +664,8 @@ export function ProspectingClient() {
                       limit,
                       budget_usd: budget,
                       enrich,
+                      avaliar_site: avaliarSite,
+                      gerar_previa: avaliarSite && gerarPrevia,
                     },
                   },
                   t("Solicitação registrada. Acompanhe o estado da busca nesta tela."),
@@ -714,6 +739,25 @@ export function ProspectingClient() {
                   className="mt-1"
                 />
                 {t("Enriquecer com e-mails comerciais e redes encontradas no site")}
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={avaliarSite}
+                  onChange={(e) => setAvaliarSite(e.target.checked)}
+                  className="mt-1"
+                />
+                {t("Avaliar o site de cada empresa automaticamente")}
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={avaliarSite && gerarPrevia}
+                  disabled={!avaliarSite}
+                  onChange={(e) => setGerarPrevia(e.target.checked)}
+                  className="mt-1"
+                />
+                {t("Gerar a prévia da mensagem automaticamente (consome crédito de IA)")}
               </label>
               <p className="text-xs text-muted-foreground">
                 {t(
@@ -1324,7 +1368,13 @@ export function ProspectingClient() {
                           )}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {t("Sites verificados:")} {sitesVerificados} {t("de")} {marcadas.length}
+                          {opcoes.avaliarSite ? (
+                            <>
+                              {t("Sites verificados:")} {sitesVerificados} {t("de")} {marcadas.length}
+                            </>
+                          ) : (
+                            t("Avaliação automática desligada nesta busca")
+                          )}
                           {temAgenteNaCampanha && (
                             <>
                               {" · "}
@@ -1560,6 +1610,7 @@ export function ProspectingClient() {
                               <PreviaNaLinha
                                 candidato={c}
                                 temAgente={temAgenteNaCampanha}
+                                previaDesligada={!opcoes.gerarPrevia}
                                 agoraIso={agora}
                               />
                             </td>

@@ -306,6 +306,66 @@ describe("H: o preparo automático na lista", () => {
     expect(within(linha).getByText("Gerando prévia…")).toBeVisible();
   });
 
+  it("interruptor 'Gerar a prévia' desligado na busca: a linha explica e nunca promete 'Gerando prévia…'", async () => {
+    api.get.mockImplementation(async () => {
+      const base = fixture();
+      return {
+        data: {
+          ...base,
+          campaigns: base.campaigns.map((c) =>
+            c.id === COMPLETA ? { ...c, search: { niche: "x", location: "y", gerar_previa: false } } : c,
+          ),
+          candidates: [candidato("i1", COMPLETA, empresa("Sem prévia por escolha", "https://saudavel.test/", SITE_OK))],
+        },
+      };
+    });
+    openPage();
+    const linha = await screen.findByRole("row", { name: /Sem prévia por escolha/ });
+    expect(
+      within(linha).getByText("Prévia desligada nesta busca: o agente escreve a mensagem na hora do envio."),
+    ).toBeVisible();
+    expect(within(linha).queryByText("Gerando prévia…")).toBeNull();
+    // E o contador de prévias some: não há prévia a esperar.
+    expect(screen.queryByText(/Prévias:/)).toBeNull();
+  });
+
+  it("interruptor 'Avaliar o site' desligado: o contador avisa em vez de prometer verificação", async () => {
+    api.get.mockImplementation(async () => {
+      const base = fixture();
+      return {
+        data: {
+          ...base,
+          campaigns: base.campaigns.map((c) =>
+            c.id === COMPLETA ? { ...c, search: { niche: "x", location: "y", avaliar_site: false } } : c,
+          ),
+          candidates: [candidato("i2", COMPLETA, empresa("Sem avaliação", "https://a.test/", null))],
+        },
+      };
+    });
+    openPage();
+    await screen.findByRole("row", { name: /Sem avaliação/ });
+    expect(screen.getByText(/Avaliação automática desligada nesta busca/)).toBeVisible();
+    expect(screen.queryByText(/Sites verificados:/)).toBeNull();
+  });
+
+  it("formulário de busca: os dois interruptores nascem ligados e vão no pedido; sem avaliação a prévia vai desligada", async () => {
+    openPage();
+    const avaliar = await screen.findByLabelText("Avaliar o site de cada empresa automaticamente");
+    const previa = screen.getByLabelText("Gerar a prévia da mensagem automaticamente (consome crédito de IA)");
+    expect(avaliar).toBeChecked();
+    expect(previa).toBeChecked();
+    fireEvent.click(avaliar);
+    expect(previa).toBeDisabled();
+    expect(previa).not.toBeChecked();
+    fireEvent.change(screen.getByLabelText("Público ou segmento"), { target: { value: "clínicas" } });
+    fireEvent.change(screen.getByLabelText("Cidade ou região"), { target: { value: "Sorocaba, SP" } });
+    fireEvent.click(screen.getByRole("button", { name: "Buscar empresas" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    const corpo = JSON.stringify(api.post.mock.calls[0]);
+    expect(corpo).toContain('"avaliar_site":false');
+    expect(corpo).toContain('"gerar_previa":false');
+  });
+
   it("prévia que venceu (o site foi verificado de novo) não é mostrada como pronta nem como 'gerando'", async () => {
     api.get.mockImplementation(async () => ({
       data: estado([

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { configPadraoDaOrganizacao } from "./config-padrao";
+import { configPadraoDaOrganizacao, INSTRUCAO_NEUTRA, QUALIFICACAO_NEUTRA } from "./config-padrao";
 
 const ORG = "99999999-9999-4999-8999-999999999999";
 const AGENTE = "55555555-5555-4555-8555-555555555555";
@@ -22,7 +22,17 @@ describe("configPadraoDaOrganizacao", () => {
     const db = { query: vi.fn(async () => ({ rows: [{ config: { instruction: "parcial" } }, { config: CONFIG }] })) };
     const r = await configPadraoDaOrganizacao(db, ORG);
     expect(r?.agenteId).toBe(AGENTE);
-    expect(r?.config.instruction).toBe(CONFIG.instruction);
+    // Só o AGENTE atravessa: o roteiro da campanha antiga (segmento dela) não.
+    expect(r?.config.instruction).toBe(INSTRUCAO_NEUTRA);
+    expect(r?.config.qualification).toBe(QUALIFICACAO_NEUTRA);
+    expect(JSON.stringify(r?.config)).not.toContain("Apresente a clínica");
+    expect(JSON.stringify(r?.config)).not.toContain("Tem interesse em agendar");
+  });
+
+  it("as ofertas da campanha antiga também não atravessam", async () => {
+    const db = { query: vi.fn(async () => ({ rows: [{ config: { ...CONFIG, ofertas: ["automacao_crm"] } }] })) };
+    const r = await configPadraoDaOrganizacao(db, ORG);
+    expect(r?.config).not.toHaveProperty("ofertas");
   });
 
   it("nenhuma campanha com agente: null", async () => {

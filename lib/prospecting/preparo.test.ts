@@ -195,13 +195,48 @@ describe("B) quem recebe prévia", () => {
     });
     await rodar(pool);
     expect(idsGerados().sort()).toEqual(["a", "b"]);
-    // A geração recebe a config do PADRÃO, não a (parcial) da campanha.
-    for (const chamada of mocks.gerar.mock.calls)
-      expect((chamada[2] as { config: unknown }).config).toMatchObject(CONFIG);
+    // A geração recebe o AGENTE do padrão, com instrução NEUTRA — nunca o roteiro da campanha
+    // antiga (segmento dela) nem a config parcial da campanha nova.
+    for (const chamada of mocks.gerar.mock.calls) {
+      const cfg = (chamada[2] as { config: Record<string, unknown> }).config;
+      expect(cfg.agent_id).toBe(CONFIG.agent_id);
+    }
     // O padrão é lido UMA vez por rodada, não por campanha.
     expect(sqls.filter((s) => s.sql.includes("join ai_agents"))).toHaveLength(1);
     // O filtro de organização está na consulta do padrão.
     expect(sqls.find((s) => s.sql.includes("join ai_agents"))!.sql).toContain("pc.organization_id = $1");
+  });
+
+  it("interruptor 'Gerar a prévia' desligado: sem IA, mas AINDA verifica o site", async () => {
+    const { pool } = montar({
+      padrao: CONFIG,
+      campanhas: [{ id: C1, config: CONFIG, search: { niche: "clínica", avaliar_site: true, gerar_previa: false } }],
+      candidatos: { [C1]: [cand("a")] },
+    });
+    await rodar(pool);
+    expect(mocks.gerar).not.toHaveBeenCalled();
+    expect(mocks.enriquecer).toHaveBeenCalledTimes(1);
+  });
+
+  it("interruptor 'Avaliar o site' desligado: nenhuma rede e, sem avaliação, nenhuma prévia", async () => {
+    const { pool } = montar({
+      padrao: CONFIG,
+      campanhas: [{ id: C1, config: CONFIG, search: { niche: "clínica", avaliar_site: false, gerar_previa: true } }],
+      candidatos: { [C1]: [cand("a")] },
+    });
+    await rodar(pool);
+    expect(mocks.enriquecer).not.toHaveBeenCalled();
+    expect(mocks.gerar).not.toHaveBeenCalled();
+  });
+
+  it("campanha antiga (sem as chaves) segue com tudo ligado", async () => {
+    const { pool } = montar({
+      campanhas: [{ id: C1, config: CONFIG, search: { niche: "clínica" } }],
+      candidatos: { [C1]: [cand("a")] },
+    });
+    await rodar(pool);
+    expect(mocks.enriquecer).toHaveBeenCalledTimes(1);
+    expect(idsGerados()).toEqual(["a"]);
   });
 
   it("sem agente na campanha e sem padrão: nada é gerado", async () => {

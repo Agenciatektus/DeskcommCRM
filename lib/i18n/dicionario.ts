@@ -15708,6 +15708,14 @@ export const DICIONARIO: Traducoes = {
   "Sites verificados:": { es: "Sitios verificados:" },
   "Prévias:": { es: "Vistas previas:" },
   "Prévia: escolha o agente na etapa 2": { es: "Vista previa: elige el agente en el paso 2" },
+  "Avaliar o site de cada empresa automaticamente": { es: "Evaluar automáticamente el sitio de cada empresa" },
+  "Gerar a prévia da mensagem automaticamente (consome crédito de IA)": {
+    es: "Generar automáticamente la vista previa del mensaje (consume crédito de IA)",
+  },
+  "Avaliação automática desligada nesta busca": { es: "Evaluación automática desactivada en esta búsqueda" },
+  "Prévia desligada nesta busca: o agente escreve a mensagem na hora do envio.": {
+    es: "Vista previa desactivada en esta búsqueda: el agente escribe el mensaje al momento del envío.",
+  },
   "Prévia desatualizada: o site foi verificado de novo. Abra Ver detalhes e gere outra.": {
     es: "Vista previa desactualizada: el sitio se verificó de nuevo. Abre Ver detalles y genera otra.",
   },

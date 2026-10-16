@@ -48,6 +48,7 @@ import { logger } from "@/lib/logger";
 import { configPadraoDaOrganizacao, type ConfigPadrao } from "./config-padrao";
 import { personalizacaoDaOrganizacao } from "./personalizar";
 import { gerarPreviaDoCandidato } from "./previa-gerar";
+import { opcoesDoPreparo } from "./opcoes-do-preparo";
 import { gravarPrevia, previaPorGerar } from "./previa";
 import { campaignConfigSchema, type Prospect } from "./schema";
 import { enriquecerSitesPendentes } from "./site-enrich";
@@ -69,7 +70,7 @@ export interface ResumoDoPreparo {
   pulou: boolean;
 }
 
-type CampanhaDoPreparo = { id: string; config: unknown; search: { niche?: string } | null };
+type CampanhaDoPreparo = { id: string; config: unknown; search: ({ niche?: string } & Record<string, unknown>) | null };
 type CandidatoDoPreparo = {
   id: string;
   data: Prospect;
@@ -171,6 +172,8 @@ async function trabalhar(
   let restanteDeSites = TETO_DE_SITES_POR_RODADA;
   for (const c of campanhas) {
     if (restanteDeSites <= 0 || Date.now() >= deadline) break;
+    // Interruptor da busca: "Avaliar o site" desligado = nenhuma rede automática.
+    if (!opcoesDoPreparo(c.search).avaliarSite) continue;
     try {
       const r = await enriquecerSitesPendentes(db, org, requestId, deadline, c.id, restanteDeSites);
       resumo.sites += r.enriquecidos;
@@ -197,6 +200,9 @@ async function trabalhar(
 
   for (const c of campanhas) {
     if (vagas <= 0 || falhas >= MAX_FALHAS_POR_RODADA || Date.now() >= deadline) break;
+    // Interruptor da busca: "Gerar a prévia" desligado = nenhuma IA automática; o agente
+    // escreve a mensagem na hora do envio.
+    if (!opcoesDoPreparo(c.search).gerarPrevia) continue;
     const cfg = campaignConfigSchema.safeParse(c.config);
     let configDaPrevia: unknown = c.config;
     if (!cfg.success || !cfg.data.agent_id) {
