@@ -45,6 +45,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
+import { configPadraoDaOrganizacao, type ConfigPadrao } from "./config-padrao";
 import { personalizacaoDaOrganizacao } from "./personalizar";
 import { gerarPreviaDoCandidato } from "./previa-gerar";
 import { gravarPrevia, previaPorGerar } from "./previa";
@@ -181,7 +182,11 @@ async function trabalhar(
     }
   }
 
-  // Passo 2 — a IA: uma prévia por candidato, só em campanha COM agente válido.
+  // Passo 2 — a IA: uma prévia por candidato. A campanha com agente usa o DELA; a que
+  // ainda não escolheu (busca nova) usa o agente PADRÃO da organização — a prévia sai
+  // junto com a avaliação, e o envio só a aproveita se o agente for o mesmo. Sem
+  // nenhum dos dois, não há quem escreva: nada é gerado.
+  let padrao: ConfigPadrao | null | undefined;
   const personalizacao = await personalizacaoDaOrganizacao(db, org);
   let vagas = TETO_PREVIAS_POR_RODADA;
   let falhas = 0;
@@ -190,7 +195,12 @@ async function trabalhar(
   for (const c of campanhas) {
     if (vagas <= 0 || falhas >= MAX_FALHAS_POR_RODADA || Date.now() >= deadline) break;
     const cfg = campaignConfigSchema.safeParse(c.config);
-    if (!cfg.success || !cfg.data.agent_id) continue;
+    let configDaPrevia: unknown = c.config;
+    if (!cfg.success || !cfg.data.agent_id) {
+      if (padrao === undefined) padrao = await configPadraoDaOrganizacao(db, org);
+      if (!padrao) continue;
+      configDaPrevia = padrao.config;
+    }
 
     const agoraIso = new Date().toISOString();
     const candidatos = (
@@ -216,7 +226,7 @@ async function trabalhar(
                 data: x.data,
                 status: x.status,
                 contact_id: x.contact_id,
-                config: c.config,
+                config: configDaPrevia,
                 search: c.search,
               },
               { personalizacao },

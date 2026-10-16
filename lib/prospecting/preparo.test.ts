@@ -86,6 +86,8 @@ type Cenario = {
   candidatos?: Record<string, ReturnType<typeof cand>[]>;
   falhaNaCampanhas?: Error;
   falhaNoUnlock?: Error;
+  /** O agente padrão da organização (campanha sem agente usa a config dele). */
+  padrao?: unknown;
 };
 
 function montar(c: Cenario = {}) {
@@ -98,6 +100,7 @@ function montar(c: Cenario = {}) {
         if (c.falhaNoUnlock) throw c.falhaNoUnlock;
         return { rows: [{ pg_advisory_unlock: true }] };
       }
+      if (sql.includes("join ai_agents")) return { rows: c.padrao ? [{ config: c.padrao }] : [] };
       if (sql.includes("from prospecting_campaigns")) {
         if (c.falhaNaCampanhas) throw c.falhaNaCampanhas;
         return {
@@ -179,6 +182,36 @@ describe("B) quem recebe prévia", () => {
     expect(
       sqls.some((s) => s.sql.includes("from prospecting_candidates") && s.params[1] === C2),
     ).toBe(false);
+  });
+
+  it("campanha SEM agente usa o agente PADRÃO da organização (a prévia sai junto com a avaliação)", async () => {
+    const { pool, sqls } = montar({
+      padrao: CONFIG,
+      campanhas: [
+        { id: C2, config: { instruction: "busca nova, sem agente" } },
+        { id: C1, config: null },
+      ],
+      candidatos: { [C2]: [cand("a")], [C1]: [cand("b")] },
+    });
+    await rodar(pool);
+    expect(idsGerados().sort()).toEqual(["a", "b"]);
+    // A geração recebe a config do PADRÃO, não a (parcial) da campanha.
+    for (const chamada of mocks.gerar.mock.calls)
+      expect((chamada[2] as { config: unknown }).config).toMatchObject(CONFIG);
+    // O padrão é lido UMA vez por rodada, não por campanha.
+    expect(sqls.filter((s) => s.sql.includes("join ai_agents"))).toHaveLength(1);
+    // O filtro de organização está na consulta do padrão.
+    expect(sqls.find((s) => s.sql.includes("join ai_agents"))!.sql).toContain("pc.organization_id = $1");
+  });
+
+  it("sem agente na campanha e sem padrão: nada é gerado", async () => {
+    const { pool } = montar({
+      campanhas: [{ id: C2, config: { instruction: "busca nova, sem agente" } }],
+      candidatos: { [C2]: [cand("a")] },
+    });
+    const r = await rodar(pool);
+    expect(idsGerados()).toEqual([]);
+    expect(r.previas).toBe(0);
   });
 
   it("a seleção de candidatos filtra no SQL o que o TS também recusa (não trava a fila)", async () => {

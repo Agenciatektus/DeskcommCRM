@@ -29,7 +29,7 @@ import {
   LIMITE_TENTATIVAS,
   siteEfetivo,
 } from "./site-efetivo";
-import { previaValida } from "./previa";
+import { previaDoAgente } from "./previa";
 import { blocoVozVendedor, personalizacaoDaOrganizacao } from "./personalizar";
 import { campaignConfigSchema, type OfertaDaCampanha } from "./schema";
 import { prepararCandidatos } from "./preparo";
@@ -243,7 +243,8 @@ export async function sendNextCandidate(
     // `siteEfetivo` — a leitura única que `prever_abordagem` também usa — para o
     // par tela×envio não divergir (quem não tem site já é `sem-site` derivado,
     // sem rede). A prévia guardada só entra se ainda estiver ancorada na
-    // auditoria atual (`previaValida`); vencida, o envio escreve do zero.
+    // auditoria atual E escrita pelo MESMO agente (`previaDoAgente`); vencida ou
+    // de outro agente (a do padrão da organização), o envio escreve do zero.
     const personalizacao = await personalizacaoDaOrganizacao(db, c.organization_id);
     const site = siteEfetivo(p.data, new Date().toISOString());
     const estrategia = site
@@ -269,7 +270,7 @@ export async function sendNextCandidate(
       // ramo frio é o único que proíbe afirmar preenchimento — ver blocoDeModo.
       origemDaAbordagem: "prospeccao_fria",
       // Fonte única em `montarDadosDeAbordagem` (prévia da tela bebe da mesma).
-      dados: montarDadosDeAbordagem(p.data, site, previaValida(p.data)),
+      dados: montarDadosDeAbordagem(p.data, site, previaDoAgente(p.data, cfg.agent_id)),
     });
     if (!generated.ok)
       // DO CANDIDATO: o modelo não produziu texto para ESTES dados.
@@ -402,7 +403,7 @@ export async function sendNextCandidate(
  * parada no topo da ordem para sempre).
  *
  * "Pendente" = marcada, ainda na fila, e (a) site na web sem veredito, ou
- * (b) com veredito definitivo (ou sem site) e sem prévia numa campanha COM agente.
+ * (b) com veredito definitivo (ou sem site) e sem prévia (agente da campanha ou o padrão).
  * É o espelho em SQL de `precisaDeRede`/`previaPorGerar`; quem decide de verdade
  * é o preparo, em TS — esta consulta só escolhe quem vale a pena abrir.
  */
@@ -416,8 +417,10 @@ const ORGS_COM_PREPARO_PENDENTE =
   `or (coalesce((c.data->'site'->>'provisorio')::boolean, false) ` +
   `and coalesce(nullif(c.data->'site'->>'tentativas', '')::int, 0) < ${LIMITE_TENTATIVAS} ` +
   `and coalesce(nullif(c.data->'site'->>'verificado_em', '')::timestamptz, 'epoch'::timestamptz) <= now() - interval '${INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN} minutes'))) ` +
-  // (b) prévia por gerar: campanha com agente, veredito definitivo (ou sem site) e nenhuma prévia
-  "or (pc.config->>'agent_id' is not null and c.data->'previa' is null " +
+  // (b) prévia por gerar: veredito definitivo (ou sem site) e nenhuma prévia. Sem exigir agente
+  // na campanha: o agente padrão da organização a atende (`config-padrao.ts`); quem decide se
+  // existe um é o preparo, em TS.
+  "or (c.data->'previa' is null " +
   "and ((c.data->'site' is not null and not coalesce((c.data->'site'->>'provisorio')::boolean, false)) " +
   "or (c.data->'site' is null and nullif(trim(c.data->>'website'), '') is null))))) " +
   "group by pc.organization_id order by min(pc.updated_at) limit 20";

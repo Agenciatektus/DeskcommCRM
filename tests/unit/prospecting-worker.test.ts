@@ -450,10 +450,24 @@ describe("a abordagem fria leva a estratégia e a prévia guardada (par com a te
         texto: "Rascunho guardado pela tela",
         baseada_em: "sem-site@derivado",
         gerada_em: "2026-10-11T09:00:00.000Z",
-        agente_id: "11111111-1111-4111-8111-111111111111",
+        // O MESMO agente da campanha: a prévia de outro agente não é aproveitada.
+        agente_id: id,
       },
     },
   };
+
+  it("F) a prévia escrita por OUTRO agente (o padrão) não vai: o envio escreve do zero", async () => {
+    const deOutro = {
+      ...comPrevia,
+      data: {
+        ...comPrevia.data,
+        previa: { ...comPrevia.data.previa, agente_id: "11111111-1111-4111-8111-111111111111" },
+      },
+    };
+    await sendNextCandidate({} as never, database(undefined, deOutro) as never, {} as never, campaign);
+    const args = mocks.generate.mock.calls[0]![2] as { dados: Record<string, string> };
+    expect(args.dados["Rascunho de abordagem"]).toBeUndefined();
+  });
 
   it("F) passa a estratégia na instrução e o rascunho nos dados", async () => {
     await sendNextCandidate({} as never, database(undefined, comPrevia) as never, {} as never, campaign);

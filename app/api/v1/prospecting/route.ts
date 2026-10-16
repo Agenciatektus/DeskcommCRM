@@ -10,7 +10,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { capabilitiesOf } from "@/lib/channels/capabilities";
 import type { ChannelProvider } from "@/lib/channels/types";
 import { ProspectingError } from "@/lib/prospecting/provider";
-import { prospectingInputSchema, type Prospect } from "@/lib/prospecting/schema";
+import { campaignConfigSchema, prospectingInputSchema, type Prospect } from "@/lib/prospecting/schema";
+import { configPadraoDaOrganizacao } from "@/lib/prospecting/config-padrao";
 import { auditarSite } from "@/lib/prospecting/site-fetch";
 import { gravarPrevia } from "@/lib/prospecting/previa";
 import { gerarPreviaDoCandidato } from "@/lib/prospecting/previa-gerar";
@@ -102,6 +103,11 @@ export async function GET(req: NextRequest) {
       ),
       db.query("select settings from organizations where id=$1", [org]),
     ]);
+    // A tela só promete "Gerando prévia…" a uma campanha sem agente se existe um
+    // agente padrão para escrevê-la (`config-padrao.ts`). Falha aqui não derruba a lista.
+    const previaPadrao = await configPadraoDaOrganizacao(db, org)
+      .then((p) => p !== null)
+      .catch(() => false);
     const personalizacao = lerPersonalizacao(
       (organizacao.rows[0] as { settings?: unknown } | undefined)?.settings,
     );
@@ -110,6 +116,7 @@ export async function GET(req: NextRequest) {
         configured: !!settings.rows.length,
         campaigns: campaigns.rows,
         candidates: candidates.rows,
+        previa_padrao: previaPadrao,
         personalizacao,
         agents: agents.rows,
         channels: channels.rows.filter((c) => {
@@ -279,7 +286,18 @@ export async function POST(req: NextRequest) {
       // A geração mora em `gerarPreviaDoCandidato` (B2), a MESMA que o preparo
       // automático do tick chama: o que o operador revisa aqui e o que o sistema
       // guarda sozinho saem do mesmo código. Esta rota só traduz o motivo em HTTP.
-      const gerada = await gerarPreviaDoCandidato(pool, org, linha);
+      // Campanha ainda sem agente (busca nova): a prévia usa o agente PADRÃO da
+      // organização, como o preparo automático — o botão e o tick não divergem.
+      const configDaCampanha = campaignConfigSchema.safeParse(linha.config);
+      const padrao =
+        configDaCampanha.success && configDaCampanha.data.agent_id
+          ? null
+          : await configPadraoDaOrganizacao(pool, org);
+      const gerada = await gerarPreviaDoCandidato(
+        pool,
+        org,
+        padrao ? { ...linha, config: padrao.config } : linha,
+      );
       if (!gerada.ok) {
         if (gerada.motivo === "auditoria_pendente")
           // Quem tem site na web e ainda espera a auditoria. Quem não tem site
@@ -291,7 +309,7 @@ export async function POST(req: NextRequest) {
         // Config parcial salva pelo meio (sem `agent_id`) não é campanha
         // configurada: 422 que a tela entende, não um ZodError (500).
         if (gerada.motivo === "sem_agente")
-          throw new ProspectingError("Configure o agente da campanha para pré-visualizar.", 422);
+          throw new ProspectingError("Escolha o agente da campanha para pré-visualizar.", 422);
         throw new ProspectingError(`A IA não produziu uma abordagem: ${gerada.detalhe}.`, 422);
       }
       const { previa, estrategia, score } = gerada;

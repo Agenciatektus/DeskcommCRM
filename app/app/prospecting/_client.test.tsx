@@ -292,6 +292,20 @@ describe("H: o preparo automático na lista", () => {
     expect(within(linha).queryByText("Gerando prévia…")).toBeNull();
   });
 
+  it("campanha sem agente MAS com agente padrão na organização: 'Gerando prévia…', não 'escolha o agente'", async () => {
+    api.get.mockImplementation(async () => ({
+      data: {
+        ...estado([candidato("pp", PARCIAL, empresa("Parcial com veredito", "https://saudavel.test/", SITE_OK))]),
+        previa_padrao: true,
+      },
+    }));
+    openPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Imobiliária parcial/ }));
+    const linha = await screen.findByRole("row", { name: /Parcial com veredito/ });
+    expect(within(linha).queryByText("Prévia: escolha o agente na etapa 2")).toBeNull();
+    expect(within(linha).getByText("Gerando prévia…")).toBeVisible();
+  });
+
   it("prévia que venceu (o site foi verificado de novo) não é mostrada como pronta nem como 'gerando'", async () => {
     api.get.mockImplementation(async () => ({
       data: estado([

@@ -221,6 +221,35 @@ describe("POST /api/v1/prospecting prever_abordagem sem contato", () => {
     expect(vi.mocked(gerarAbordagemDeFormulario)).toHaveBeenCalled();
   });
 
+  it("campanha SEM agente: a prévia usa o agente PADRÃO da organização (e grava o agente dele)", async () => {
+    const gravados: unknown[][] = [];
+    deps.pool.mockReturnValue({
+      query: async (sql: string, p?: unknown[]) => {
+        if (/update prospecting_candidates/.test(sql)) gravados.push(p ?? []);
+        if (sql.includes("join ai_agents")) return { rows: [{ config: CONFIG }] };
+        if (sql.includes("from prospecting_candidates"))
+          return { rows: [{ ...linhaDoCandidato(null), config: { instruction: "busca nova" } }] };
+        return { rows: [] };
+      },
+    });
+    const res = await POST(previaSessao(CANDIDATO));
+    expect(res.status).toBe(200);
+    const chamada = vi.mocked(gerarAbordagemDeFormulario).mock.calls.at(-1)![2] as { agentId: string };
+    expect(chamada.agentId).toBe(CONFIG.agent_id);
+    expect((JSON.parse(String(gravados[0]![3])) as { agente_id: string }).agente_id).toBe(CONFIG.agent_id);
+  });
+
+  it("campanha SEM agente e SEM padrão na organização: 422 pedindo o agente", async () => {
+    deps.pool.mockReturnValue({
+      query: async (sql: string) =>
+        sql.includes("from prospecting_candidates")
+          ? { rows: [{ ...linhaDoCandidato(null), config: null }] }
+          : { rows: [] },
+    });
+    const res = await POST(previaSessao(CANDIDATO));
+    expect(res.status).toBe(422);
+  });
+
   it("caso D: com site na web e sem veredito continua 409 (a prévia precisa da auditoria)", async () => {
     const base = linhaDoCandidato(null);
     deps.pool.mockReturnValue({

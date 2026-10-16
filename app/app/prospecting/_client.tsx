@@ -59,6 +59,8 @@ type State = {
   campaigns: Campaign[];
   candidates: Candidate[];
   agents: { id: string; name: string }[];
+  /** Existe um agente padrão da organização para escrever a prévia de campanha sem agente. */
+  previa_padrao?: boolean;
   personalizacao: PersonalizacaoProspeccao;
   channels: {
     id: string;
@@ -108,10 +110,12 @@ const TRECHO_DA_PREVIA = 140;
 /**
  * A campanha tem agente configurado a ponto de o servidor gerar prévia? É o MESMO
  * `safeParse` que `gerarPreviaDoCandidato` faz: a tela só promete "Gerando
- * prévia…" onde o servidor de fato vai gerar — config parcial (sem agente) não.
+ * prévia…" onde o servidor de fato vai gerar: com agente na campanha, ou com o agente padrão da organização.
  */
-function campanhaGeraPrevia(c: Campaign): boolean {
-  return !!c.config && campaignConfigSchema.safeParse(c.config).success;
+function campanhaGeraPrevia(c: Campaign, previaPadrao: boolean): boolean {
+  // Campanha sem agente (busca nova) também gera: o servidor usa o agente PADRÃO
+  // da organização (`config-padrao.ts`) — se existe um (`previa_padrao`).
+  return previaPadrao || (!!c.config && campaignConfigSchema.safeParse(c.config).success);
 }
 
 /**
@@ -125,7 +129,7 @@ function algoPorPreparar(estado: State, agoraIso: string): boolean {
   const atendidas = new Map(
     estado.campaigns
       .filter((c) => STATUS_COM_PREPARO.has(c.status))
-      .map((c) => [c.id, campanhaGeraPrevia(c)] as const),
+      .map((c) => [c.id, campanhaGeraPrevia(c, estado.previa_padrao === true)] as const),
   );
   return estado.candidates.some((c) => {
     const comAgente = atendidas.get(c.campaign_id);
@@ -416,7 +420,7 @@ export function ProspectingClient() {
   // O andamento do preparo automático, só sobre as marcadas (a desmarcada não será
   // abordada, então não entra em nenhuma das duas contas). Mesmas funções puras
   // que o servidor e o recarregamento usam.
-  const temAgenteNaCampanha = !!campaign && campanhaGeraPrevia(campaign);
+  const temAgenteNaCampanha = !!campaign && campanhaGeraPrevia(campaign, data?.previa_padrao === true);
   const marcadas = candidates.filter((c) => c.selected !== false);
   const sitesVerificados = marcadas.length - pendentesDeSite;
   const previasProntas = marcadas.filter((c) => previaValida(c.data)).length;
@@ -1548,7 +1552,7 @@ export function ProspectingClient() {
                                 nicho={nichoDaCampanha || c.data.category || ""}
                                 status={c.status ?? c.progress}
                                 disabled={busy}
-                                temAgente={!!configCompleta}
+                                temAgente={temAgenteNaCampanha}
                                 sobrescritaVocabulario={data?.personalizacao?.vocabulario ?? null}
                                 onReanalisar={reanalisarSite}
                                 onPrevia={preverAbordagem}

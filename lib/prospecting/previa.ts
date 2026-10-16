@@ -72,6 +72,17 @@ export function previaValida(data: DadosDaPrevia): PreviaSalva | null {
 }
 
 /**
+ * A prévia que o ENVIO pode usar: válida (ancorada na auditoria atual) E escrita
+ * pelo MESMO agente que vai enviar. A prévia pode ter nascido com o agente
+ * padrão da organização (a campanha ainda não tinha o seu); se a pessoa escolheu
+ * outro na etapa 2, o tom da prévia não é o dele — o envio escreve do zero.
+ */
+export function previaDoAgente(data: DadosDaPrevia, agenteId: string): PreviaSalva | null {
+  const previa = previaValida(data);
+  return previa && previa.agente_id === agenteId ? previa : null;
+}
+
+/**
  * Grava a prévia no candidato: merge de UMA chave (`data || jsonb_build_object`)
  * — as outras chaves de `data` (site, endereço…) ficam intactas. Filtro de
  * organização OBRIGATÓRIO: `admin`/service role não passa por RLS, e um `update`
