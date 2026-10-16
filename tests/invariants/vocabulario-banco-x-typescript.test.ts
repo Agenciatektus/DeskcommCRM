@@ -513,6 +513,12 @@ const PARES: Array<{
     arquivo: "lib/inbox/recursos.ts",
     simbolo: "TIPOS_DE_RECURSO",
   },
+  {
+    tabela: "external_db_connections",
+    coluna: "source_mode",
+    arquivo: "lib/external-db/types.ts",
+    simbolo: "ModoDeFontes",
+  },
 ];
 
 /** Tira um nível de parênteses externos, se ele envolver a expressão inteira. */
