@@ -216,6 +216,7 @@ export function derivarClasse(entrada: EntradaDaClasse): ClasseDeSite {
 /** Problema → frase leiga para a tela e para a copy. PT-BR; a UI usa `t()` à parte. */
 const DESCRICOES: Record<string, string> = {
   "sem-https": "sem cadeado de segurança (aparece como 'não seguro' no navegador)",
+  "http-sem-redirecionar": "o endereço do Google abre sem cadeado (o site tem versão segura, mas não leva para ela)",
   "ssl-invalido": "certificado de segurança inválido ou vencido (o navegador mostra alerta antes de abrir)",
   "fora-do-ar": "o site não abre",
   "dns-morto": "o endereço do site não existe mais (domínio pode ter expirado)",

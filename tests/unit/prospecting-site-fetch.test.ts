@@ -45,17 +45,31 @@ describe("site-fetch", () => {
     expect(v.verificado_em).toBe(AGORA);
   });
 
-  it("http final vira sem-https e site-ruim", async () => {
+  it("http final vira sem-https e site-ruim quando a versão https NÃO abre", async () => {
+    const base = fakeFetch({
+      "a.test": { status: 301, body: "", location: "http://b.test/" },
+      "b.test": { status: 200, body: PAGINA_BOA },
+    });
+    const semHttps = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input instanceof Request ? input.url : input).startsWith("https://"))
+        throw new Error("connect ECONNREFUSED");
+      return base(input, init);
+    }) as typeof fetch;
+    const v = await auditarSite("http://a.test/", AGORA, semHttps, VERIFICADOR_LIBERADO);
+    expect(v.classe).toBe("site-ruim");
+    expect(v.problemas).toContain("sem-https");
+    expect(v.problemas).not.toContain("http-sem-redirecionar");
+  });
+
+  it("http final com versão https que ABRE vira http-sem-redirecionar, não sem-https", async () => {
     const v = await auditarSite(
       "http://a.test/", AGORA,
-      fakeFetch({
-        "a.test": { status: 301, body: "", location: "http://b.test/" },
-        "b.test": { status: 200, body: PAGINA_BOA },
-      }),
+      fakeFetch({ "*": { status: 200, body: PAGINA_BOA } }),
       VERIFICADOR_LIBERADO,
     );
     expect(v.classe).toBe("site-ruim");
-    expect(v.problemas).toContain("sem-https");
+    expect(v.problemas).toContain("http-sem-redirecionar");
+    expect(v.problemas).not.toContain("sem-https");
   });
 
   it("404 vira site-ruim com http-404", async () => {

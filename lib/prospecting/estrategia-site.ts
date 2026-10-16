@@ -202,7 +202,7 @@ export function montarEstrategia(entrada: EntradaDaEstrategia): EstrategiaDoLead
     angulo =
       "O site NÃO ABRE — quem clica encontra erro. Abra como AVISO de cortesia (gera gratidão, não parece venda) e ofereça reconstruir rápido. Maior urgência, melhor resposta.";
     ganchos.push("Diga que tentou acessar e está fora do ar — você está avisando, não vendendo. A oferta vem depois da reação.");
-  } else if (entrada.classe === "ssl-invalido" || entrada.problemas.includes("sem-https")) {
+  } else if (entrada.classe === "ssl-invalido" || entrada.problemas.includes("sem-https") || entrada.problemas.includes("http-sem-redirecionar")) {
     cenario = "Site inseguro";
     angulo =
       "O navegador marca o site como “não seguro” — espanta cliente na hora e derruba a posição no Google. A reputação construída está sendo minada por um cadeado vermelho.";

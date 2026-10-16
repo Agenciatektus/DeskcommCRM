@@ -216,6 +216,26 @@ async function buscar(
   throw new Error("redirects-demais");
 }
 
+/**
+ * A mesma página abre por https? Uma sonda só, pelo mesmo caminho seguro de
+ * `buscar` (guarda de rede e redirects revalidados). Qualquer falha — certificado,
+ * conexão, 4xx/5xx, ou terminar de volta em http — conta como "não abre".
+ */
+async function httpsAbre(
+  urlHttp: string,
+  fetchFn: typeof fetch,
+  verificar: VerificadorDeHost,
+): Promise<boolean> {
+  try {
+    const alvo = new URL(urlHttp);
+    alvo.protocol = "https:";
+    const r = await buscar(alvo.href, fetchFn, verificar);
+    return r.status < 400 && r.finalUrl.toLowerCase().startsWith("https://");
+  } catch {
+    return false;
+  }
+}
+
 function extrairPrimeiro(html: string, padrao: RegExp): string | null {
   const m = padrao.exec(html);
   return m?.[1] ? m[1].replace(/\s+/g, " ").trim() || null : null;
@@ -339,7 +359,12 @@ export async function auditarSite(
       };
     }
     if (busca.ms > LIMITE_LENTO_MS) problemas.push("lento");
-    if (busca.finalUrl.toLowerCase().startsWith("http://")) problemas.push("sem-https");
+    if (busca.finalUrl.toLowerCase().startsWith("http://")) {
+      // O endereço que o Google mostra abre sem cadeado. Mas "o site não tem https" só é
+      // verdade se a versão https também NÃO abre: se abre, o defeito é outro (não
+      // redireciona) e a copy não pode afirmar o que não é.
+      problemas.push((await httpsAbre(busca.finalUrl, fetchFn, verificar)) ? "http-sem-redirecionar" : "sem-https");
+    }
     else if (/(?:\ssrc=["']http:\/\/|<link[^>]+href=["']http:\/\/)/i.test(html)) problemas.push("conteudo-misto");
     if (!minusculo.includes("viewport")) problemas.push("nao-mobile");
     if (html.trim().length < MINIMO_CHARS_PAGINA_REAL) problemas.push("quase-vazia");
