@@ -200,4 +200,30 @@ describe("POST /api/v1/prospecting prever_abordagem sem contato", () => {
       expect.objectContaining({ leadId: CONTATO }),
     );
   });
+
+  it("caso C: sem site próprio (website vazio, sem veredito) deriva sem-site e responde 200", async () => {
+    const base = linhaDoCandidato(null);
+    deps.pool.mockReturnValue({
+      query: async (sql: string) =>
+        sql.includes("from prospecting_candidates")
+          ? { rows: [{ ...base, data: { ...base.data, website: null, site: null } }] }
+          : { rows: [] },
+    });
+    const res = await POST(previaSessao(CANDIDATO));
+    expect(res.status).toBe(200);
+    expect(vi.mocked(gerarAbordagemDeFormulario)).toHaveBeenCalled();
+  });
+
+  it("caso D: com site na web e sem veredito continua 409 (a prévia precisa da auditoria)", async () => {
+    const base = linhaDoCandidato(null);
+    deps.pool.mockReturnValue({
+      query: async (sql: string) =>
+        sql.includes("from prospecting_candidates")
+          ? { rows: [{ ...base, data: { ...base.data, site: null } }] }
+          : { rows: [] },
+    });
+    const res = await POST(previaSessao(CANDIDATO));
+    expect(res.status).toBe(409);
+    expect(vi.mocked(gerarAbordagemDeFormulario)).not.toHaveBeenCalled();
+  });
 });

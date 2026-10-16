@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/hooks/i18n/useT";
 import { AuditoriaDoSite } from "@/components/prospecting/AuditoriaDoSite";
 import { descreverProblema } from "@/lib/prospecting/site-classify";
+import { siteEfetivo } from "@/lib/prospecting/site-efetivo";
 import {
   pontuarCandidato,
   rotuloDaClasse,
@@ -42,6 +43,7 @@ export function AuditoriaDoCandidato({
   nicho,
   status,
   disabled,
+  temAgente,
   sobrescritaVocabulario,
   onReanalisar,
   onPrevia,
@@ -52,6 +54,8 @@ export function AuditoriaDoCandidato({
   nicho: string;
   status: string;
   disabled: boolean;
+  /** Campanha já tem agente escolhido: sem ele a prévia não tem com que gerar. */
+  temAgente: boolean;
   sobrescritaVocabulario?: Record<string, string> | null;
   onReanalisar: (candidateId: string) => Promise<void>;
   onPrevia: (candidateId: string) => Promise<PreviaDaAbordagem | null>;
@@ -60,7 +64,18 @@ export function AuditoriaDoCandidato({
   const [aberto, setAberto] = useState(false);
   const [previa, setPrevia] = useState<PreviaDaAbordagem | null>(null);
   const [gerando, setGerando] = useState(false);
-  const site = data.site ?? null;
+  const [erroDaPrevia, setErroDaPrevia] = useState<string | null>(null);
+  const previaRef = useRef<HTMLDivElement | null>(null);
+  // O veredito da LEITURA (morada única em `site-efetivo.ts`): o gravado ou o
+  // `sem-site` derivado do `website` vazio. Só depende de rede quem tem site
+  // na web e ainda não foi auditado — por isso a linha sem site nunca fica
+  // presa em "A verificar".
+  const site = siteEfetivo(data, new Date().toISOString());
+  // A1: quando a prévia chega, ela rola para a área visível da janela — o texto
+  // caía fora do que o modal mostrava (medido: posição 777 numa janela de 726).
+  useEffect(() => {
+    if (previa) previaRef.current?.scrollIntoView({ block: "nearest" });
+  }, [previa]);
   if (!site) {
     return (
       <div className="space-y-2">
@@ -109,6 +124,7 @@ export function AuditoriaDoCandidato({
         size="sm"
         onClick={() => {
           setPrevia(null);
+          setErroDaPrevia(null);
           setAberto(true);
         }}
       >
@@ -135,19 +151,42 @@ export function AuditoriaDoCandidato({
               type="button"
               variant="outline"
               size="sm"
-              disabled={disabled || gerando}
+              disabled={disabled || gerando || !temAgente}
               onClick={() => {
                 setGerando(true);
+                setErroDaPrevia(null);
                 void onPrevia(candidateId)
                   .then(setPrevia)
+                  .catch((erro: unknown) =>
+                    // A2: o erro da prévia mora AQUI, na própria janela — subir
+                    // para o aviso geral da página tirava do operador o contexto
+                    // (de qual empresa falhou) e deixava o aviso preso ao trocar
+                    // de campanha.
+                    setErroDaPrevia(
+                      erro instanceof Error ? erro.message : t("Não foi possível gerar a prévia."),
+                    ),
+                  )
                   .finally(() => setGerando(false));
               }}
             >
               {gerando ? t("Gerando prévia…") : t("Prévia da abordagem")}
             </Button>
           </div>
+          {!temAgente && (
+            <p className="text-xs text-muted-foreground">
+              {t("Escolha o agente na etapa 2 para ver a prévia.")}
+            </p>
+          )}
+          {erroDaPrevia && (
+            <p
+              role="alert"
+              className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+            >
+              {erroDaPrevia}
+            </p>
+          )}
           {previa && (
-            <div className="rounded-md border p-3 text-xs leading-relaxed">
+            <div ref={previaRef} className="rounded-md border p-3 text-xs leading-relaxed">
               <p className="whitespace-pre-wrap">{previa.mensagem}</p>
             </div>
           )}

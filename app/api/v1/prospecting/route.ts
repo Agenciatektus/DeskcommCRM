@@ -11,6 +11,7 @@ import type { ChannelProvider } from "@/lib/channels/types";
 import { ProspectingError } from "@/lib/prospecting/provider";
 import { campaignConfigSchema, prospectingInputSchema, type Prospect } from "@/lib/prospecting/schema";
 import { auditarSite } from "@/lib/prospecting/site-fetch";
+import { siteEfetivo } from "@/lib/prospecting/site-efetivo";
 import { enriquecerSitesPendentes } from "@/lib/prospecting/site-enrich";
 import {
   instrucaoDeAbordagemFria,
@@ -281,53 +282,59 @@ export async function POST(req: NextRequest) {
           }
         | undefined;
       if (!linha) throw new ProspectingError("Candidato não encontrado.", 404);
-      if (!linha.data.site)
+      // A4: a prévia usa o MESMO veredito que a tela mostra. Quem não tem site
+      // próprio já tem `sem-site` derivado (sem rede); o 409 fica só para quem
+      // tem site na web e ainda espera a auditoria — antes isso barrava também
+      // as linhas sem site, que nunca teriam auditoria nenhuma.
+      const site = siteEfetivo(linha.data, new Date().toISOString());
+      if (!site)
         throw new ProspectingError(
           "Auditoria pendente para este candidato. Aguarde o tick ou use Reanalisar site.",
           409,
         );
-      if (!linha.config)
+      // Config parcial salva pelo meio (sem `agent_id`) não é campanha
+      // configurada: o `parse` cru estourava ZodError (500) em vez do 422 que a
+      // tela entende — mesma origem do defeito corrigido na ativação.
+      const cfg = linha.config ? campaignConfigSchema.safeParse(linha.config) : null;
+      if (!cfg?.success || !cfg.data.agent_id)
         throw new ProspectingError("Configure o agente da campanha para pré-visualizar.", 422);
-      const cfg = campaignConfigSchema.parse(linha.config);
-      if (!cfg.agent_id)
-        throw new ProspectingError("Configure o agente da campanha para pré-visualizar.", 422);
-      const ofertas = (cfg.ofertas ?? ["site"]) as OfertaDaCampanha[];
+      const ofertas = (cfg.data.ofertas ?? ["site"]) as OfertaDaCampanha[];
       // Mesmos fios do envio (voz + vocabulário da org): a prévia só vale se
       // for byte a byte o que o tick mandaria.
       const personalizacao = await personalizacaoDaOrganizacao(pool, org);
       const gerado = await gerarAbordagemDeFormulario(pool, llmEdgeConfigFromEnv(env), {
         tenantId: org,
-        agentId: cfg.agent_id,
+        agentId: cfg.data.agent_id,
         leadId: linha.contact_id ?? null,
         instrucao: instrucaoDeAbordagemFria(
-          cfg.instruction,
-          cfg.qualification,
+          cfg.data.instruction,
+          cfg.data.qualification,
           blocoVozVendedor(personalizacao) || undefined,
         ),
         origem: "Pesquisa de empresas",
         origemDaAbordagem: "prospeccao_fria",
-        dados: montarDadosDeAbordagem(linha.data, linha.data.site),
+        dados: montarDadosDeAbordagem(linha.data, site),
       });
       if (!gerado.ok)
         throw new ProspectingError(`A IA não produziu uma abordagem: ${gerado.reason}.`, 422);
       const estrategia = montarEstrategia({
-        classe: linha.data.site.classe,
-        problemas: linha.data.site.problemas,
-        checklist: linha.data.site.checklist,
+        classe: site.classe,
+        problemas: site.problemas,
+        checklist: site.checklist,
         nota: linha.data.rating,
         numAvaliacoes: linha.data.reviews,
         temInstagram: /instagram/i.test((linha.data.socials ?? []).join(",")),
         ofertas,
         nicho: linha.search?.niche ?? linha.data.category ?? "",
         sobrescritaVocabulario: personalizacao.vocabulario ?? null,
-        provisorio: linha.data.site.provisorio ?? false,
+        provisorio: site.provisorio ?? false,
         status: linha.status,
         followUpsEnviados: 0,
       });
       result = {
         mensagem: gerado.texto,
         estrategia,
-        score: pontuarCandidato(linha.data.rating, linha.data.reviews, linha.data.site.classe, ofertas[0] ?? "site", linha.data.site.provisorio ?? false),
+        score: pontuarCandidato(linha.data.rating, linha.data.reviews, site.classe, ofertas[0] ?? "site", site.provisorio ?? false),
       };
     } else if (body.action === "verificar_sites") {
       // Verificação sob demanda (spec 24): roda o MESMO enriquecimento do tick,

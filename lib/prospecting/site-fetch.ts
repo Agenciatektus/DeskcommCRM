@@ -36,6 +36,7 @@ import {
   type ErroDeRede,
   type SiteEnrichment,
 } from "@/lib/prospecting/site-classify";
+import { LIMITE_TENTATIVAS } from "@/lib/prospecting/site-efetivo";
 
 const TIMEOUT_MS = 8000;
 const MAX_REDIRECTS = 5;
@@ -375,16 +376,16 @@ export async function auditarSite(
   }
 }
 
-/** Teto de reverificações de um veredito provisório antes de congelar. */
-export const LIMITE_TENTATIVAS = 3;
-
-// As 3 tentativas cobrem 1h (30min × 2 intervalos), não 3 minutos de queda de rede; domínio inexistente nem espera.
-export const INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN = 30;
-
-/** Verdadeiro quando o tick deve buscar este veredito de novo. */
-export function deveReverificar(site: { provisorio: boolean; tentativas: number }): boolean {
-  return site.provisorio && site.tentativas < LIMITE_TENTATIVAS;
-}
+/**
+ * O teto de tentativas e o intervalo entre elas moram em `site-efetivo.ts`
+ * (client-safe, porque o contador da tela lê a mesma régua). Reexportados aqui
+ * para os consumidores server-side continuarem importando deste módulo.
+ */
+export {
+  deveReverificar,
+  INTERVALO_MINIMO_ENTRE_TENTATIVAS_MIN,
+  LIMITE_TENTATIVAS,
+} from "@/lib/prospecting/site-efetivo";
 
 /**
  * Roda N auditorias com paralelismo limitado, sem derrubar o lote por 1 falha

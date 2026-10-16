@@ -25,6 +25,7 @@ import {
   pontuarCandidato,
   type OfertaDaCampanha,
 } from "@/lib/prospecting/estrategia-site";
+import { precisaDeRede, siteEfetivo } from "@/lib/prospecting/site-efetivo";
 
 type Campaign = {
   id: string;
@@ -100,6 +101,10 @@ const emptyConfig: CampaignConfig = {
 };
 export function ProspectingClient() {
   const t = useT();
+  // A régua da leitura (contador, score, veredito da linha) usa o MESMO relógio
+  // desta renderização: o veredito efetivo é puro, não faz sentido calcular com
+  // instantes diferentes na mesma tela.
+  const agora = new Date().toISOString();
   // Ordenação da fila: recentes (padrão) ou score (spec 24). Antes da query:
   // o `queryKey` lê o valor no render.
   const [ordenar, setOrdenar] = useState<"" | "score">("");
@@ -116,7 +121,9 @@ export function ProspectingClient() {
     // cada 10s para sempre seria tráfego sem leitor.
     refetchInterval: (consulta) => {
       const estado = consulta.state.data as State | undefined;
-      return estado?.candidates.some((c) => !c.data.site) ? 10000 : false;
+      return estado?.candidates.some((c) => precisaDeRede(c.data, new Date().toISOString()))
+        ? 10000
+        : false;
     },
   });
   const data = query.data;
@@ -151,15 +158,19 @@ export function ProspectingClient() {
   const campaign = data?.campaigns.find((c) => c.id === selected) ?? data?.campaigns[0];
   // A stored config is frozen by activation; unsaved choices belong to one campaign.
   const config = campaign?.config ?? (campaign && campaignDrafts[campaign.id]) ?? emptyConfig;
+  // "Configurada" é a campanha que TEM agente escolhido. Config parcial salva
+  // pelo meio (instrução/qualificação sem agente) NÃO trava a etapa 2: medido na
+  // VPS, 3 rascunhos assim ficavam sem como ser iniciados.
+  const configCompleta = campaign?.config?.agent_id ? campaign.config : null;
   const funil = config.pipeline_id;
-  const manual = !!campaign && (manualCampaigns[campaign.id] || !!campaign.config);
+  const manual = !!campaign && (manualCampaigns[campaign.id] || !!configCompleta);
   const agents = [
     ...new Map(
       [...(data?.agents ?? []), ...createdAgents].map((agent) => [agent.id, agent]),
     ).values(),
   ];
   function setConfig(update: CampaignConfig | ((previous: CampaignConfig) => CampaignConfig)) {
-    if (!campaign || campaign.config) return;
+    if (!campaign || configCompleta) return;
     setCampaignDrafts((drafts) => ({
       ...drafts,
       [campaign.id]:
@@ -249,19 +260,20 @@ export function ProspectingClient() {
   const ofertasDaCampanha: OfertaDaCampanha[] = campaign?.config?.ofertas ?? ["site"];
   const nichoDaCampanha = campaign?.search?.niche ?? "";
   function scoreMedio(): string {
-    const valores = candidates.flatMap((c) =>
-      c.data.site
+    const valores = candidates.flatMap((c) => {
+      const site = siteEfetivo(c.data, agora);
+      return site
         ? [
             pontuarCandidato(
               c.data.rating,
               c.data.reviews,
-              c.data.site.classe,
+              site.classe,
               ofertasDaCampanha[0] ?? "site",
-              c.data.site.provisorio ?? false,
+              site.provisorio ?? false,
             ).valor,
           ]
-        : [],
-    );
+        : [];
+    });
     if (valores.length === 0) return "—";
     return String(Math.round(valores.reduce((a, b) => a + b, 0) / valores.length));
   }
@@ -275,7 +287,6 @@ export function ProspectingClient() {
   async function preverAbordagem(candidateId: string): Promise<PreviaDaAbordagem | null> {
     if (!campaign) return null;
     setBusy(true);
-    setError(null);
     try {
       const res = await apiClient.post<{ data: PreviaDaAbordagem }>("/api/v1/prospecting", {
         action: "prever_abordagem",
@@ -283,10 +294,10 @@ export function ProspectingClient() {
         candidate_id: candidateId,
       });
       return res.data;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("Não foi possível concluir a operação."));
-      return null;
     } finally {
+      // A2: o erro SOBE para o modal (`_auditoria-site`) — a falha da prévia não
+      // é aviso da página, e virava aviso preso quando o operador trocava de
+      // campanha.
       setBusy(false);
     }
   }
@@ -314,9 +325,13 @@ export function ProspectingClient() {
   const noneSelected = elegiveis.every((c) => c.selected === false);
   const desmarcadas = candidates.filter((c) => c.selected === false);
   /** Quantas empresas MARCADAS ainda esperam a auditoria (botão "Verificar sites").
-   * Desmarcada não entra: ela não vai ser abordada, e a auditoria existe para
-   * decidir quem abordar — contar as desmarcadas dava número que nunca zerava. */
-  const pendentesDeSite = candidates.filter((c) => c.selected !== false && !c.data.site).length;
+   * Só conta quem PRECISA DE REDE: quem não tem site já tem veredito derivado
+   * (`siteEfetivo`), não há o que buscar, e contá-lo dava um número que nunca
+   * zerava. Desmarcada não entra: ela não vai ser abordada, e a auditoria existe
+   * para decidir quem abordar. */
+  const pendentesDeSite = candidates.filter(
+    (c) => c.selected !== false && precisaDeRede(c.data, agora),
+  ).length;
   /**
    * O que o botão "Excluir desmarcadas" realmente apaga. Espelha o `where` do servidor: sem
    * negócio nem conversa (o que já virou registro do CRM não é daqui) e só o que o operador
@@ -628,6 +643,9 @@ export function ProspectingClient() {
                   onClick={() => {
                     setSelected(c.id);
                     setNotice(null);
+                    // O aviso geral não pertence a uma campanha: trocar de
+                    // campanha limpa o que era da anterior.
+                    setError(null);
                     // A confirmação de exclusão vale para UMA campanha: ao trocar, ela some.
                     setConfirmandoExclusao(false);
                     setMostrarDesmarcadas(false);
@@ -694,13 +712,13 @@ export function ProspectingClient() {
                     {t("resultados repetidos ou indisponíveis foram desconsiderados.")}
                   </p>
                 )}
-                {campaign.config && (
+                {configCompleta && (
                   <>
                     <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
                       <p className="text-sm text-muted-foreground">
-                        {t("Ritmo:")} {campaign.config.daily_limit}{" "}
+                        {t("Ritmo:")} {configCompleta.daily_limit}{" "}
                         {t("abordagens em 24 horas, com pelo menos")}{" "}
-                        {campaign.config.interval_minutes} {t("minutos entre elas.")}
+                        {configCompleta.interval_minutes} {t("minutos entre elas.")}
                       </p>
                       {campaign.status === "running" ? (
                         <Button
@@ -815,7 +833,7 @@ export function ProspectingClient() {
                         "A IA usa o agente escolhido para abrir a conversa e atender as respostas. As proteções do canal continuam valendo.",
                       )}
                     </p>
-                    {!campaign.config && (
+                    {!configCompleta && (
                       <div className="mt-4 space-y-4">
                         <div className="flex flex-wrap gap-2">
                           <Button
@@ -898,14 +916,14 @@ export function ProspectingClient() {
                           );
                         }}
                       >
-                        {campaign.config && (
+                        {configCompleta && (
                           <p className="text-sm text-muted-foreground">
                             {t(
                               "Esta campanha já começou a preparar contatos. Sua configuração foi preservada para retomar com segurança.",
                             )}
                           </p>
                         )}
-                        <fieldset disabled={!!campaign.config} className="space-y-4">
+                        <fieldset disabled={!!configCompleta} className="space-y-4">
                           {manual && (
                             <div className="space-y-4">
                               <div className="grid gap-4 md:grid-cols-2">
@@ -1433,6 +1451,7 @@ export function ProspectingClient() {
                                 nicho={nichoDaCampanha || c.data.category || ""}
                                 status={c.status ?? c.progress}
                                 disabled={busy}
+                                temAgente={!!configCompleta}
                                 sobrescritaVocabulario={data?.personalizacao?.vocabulario ?? null}
                                 onReanalisar={reanalisarSite}
                                 onPrevia={preverAbordagem}

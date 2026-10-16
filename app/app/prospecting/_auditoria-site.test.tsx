@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { AuditoriaDoCandidato } from "./_auditoria-site";
+import { AuditoriaDoCandidato, type PreviaDaAbordagem } from "./_auditoria-site";
 import type { Prospect } from "@/lib/prospecting/schema";
 
 vi.mock("@/hooks/i18n/useT", () => ({ useT: () => (s: string) => s }));
@@ -46,10 +46,18 @@ function props(data: Prospect) {
     nicho: "clínica",
     status: "new",
     disabled: false,
+    // Campanha com agente: o caso comum. O caso sem agente é testado à parte.
+    temAgente: true,
     onReanalisar: vi.fn(async () => undefined),
     onPrevia: vi.fn(async () => null),
   };
 }
+
+beforeAll(() => {
+  // jsdom não implementa `scrollIntoView`; o A1 depende dele para trazer a
+  // prévia para a área visível da janela.
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 describe("AuditoriaDoCandidato: resumo na linha, total no modal", () => {
   it("sem site mostra só o pendente com esqueleto, sem botões", () => {
@@ -104,5 +112,67 @@ describe("AuditoriaDoCandidato: resumo na linha, total no modal", () => {
     const { container } = render(<AuditoriaDoCandidato {...props(candidato(semSite))} />);
     const ocorrencias = container.textContent?.match(/sem site próprio/gi) ?? [];
     expect(ocorrencias).toHaveLength(1);
+  });
+
+  const PREVIA: PreviaDaAbordagem = {
+    mensagem: "Olá, vi o site de vocês.",
+    estrategia: { cenario: "", angulo: "", ganchos: [], objecoes: [], proximoPasso: "" },
+    score: { valor: 0, motivo: "" },
+  };
+
+  it("A1: a prévia pede rolagem para o próprio texto, com block=nearest", async () => {
+    const rolagem = vi.mocked(Element.prototype.scrollIntoView);
+    rolagem.mockClear();
+    const onPrevia = vi.fn(async () => PREVIA);
+    render(<AuditoriaDoCandidato {...props(candidato({ ...SITE_OK }))} onPrevia={onPrevia} />);
+    fireEvent.click(screen.getByRole("button", { name: "Ver detalhes" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Prévia da abordagem" }));
+    await screen.findByText(PREVIA.mensagem);
+    const rolado = rolagem.mock.contexts.find(
+      (alvo) => alvo instanceof Element && alvo.textContent?.includes(PREVIA.mensagem),
+    );
+    expect(rolado, "o elemento rolado precisa ser o que contém o texto da prévia").toBeTruthy();
+    expect(
+      rolagem.mock.calls.some(
+        ([opcoes]) =>
+          typeof opcoes === "object" && opcoes !== null && opcoes.block === "nearest",
+      ),
+    ).toBe(true);
+  });
+
+  it("A2: falha da prévia aparece na janela e não sobe para o aviso geral", async () => {
+    const onPrevia = vi.fn(async () => {
+      throw new Error("A IA não respondeu a tempo.");
+    });
+    render(<AuditoriaDoCandidato {...props(candidato({ ...SITE_OK }))} onPrevia={onPrevia} />);
+    fireEvent.click(screen.getByRole("button", { name: "Ver detalhes" }));
+    const modal = await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Prévia da abordagem" }));
+    const alerta = await within(modal).findByRole("alert");
+    expect(alerta).toHaveTextContent("A IA não respondeu a tempo.");
+    // Um único alerta: o da janela. Nada vaza para o aviso geral da página.
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
+  it("A3: sem agente na campanha, a prévia fica desabilitada com a explicação ao lado", async () => {
+    render(
+      <AuditoriaDoCandidato
+        {...props(candidato({ ...SITE_OK }))}
+        temAgente={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ver detalhes" }));
+    await screen.findByRole("dialog");
+    expect(screen.getByRole("button", { name: "Prévia da abordagem" })).toBeDisabled();
+    expect(screen.getByText("Escolha o agente na etapa 2 para ver a prévia.")).toBeVisible();
+  });
+
+  it("A3: com agente, a prévia fica habilitada e a frase não aparece", async () => {
+    render(<AuditoriaDoCandidato {...props(candidato({ ...SITE_OK }))} temAgente />);
+    fireEvent.click(screen.getByRole("button", { name: "Ver detalhes" }));
+    await screen.findByRole("dialog");
+    expect(screen.getByRole("button", { name: "Prévia da abordagem" })).toBeEnabled();
+    expect(screen.queryByText("Escolha o agente na etapa 2 para ver a prévia.")).toBeNull();
   });
 });

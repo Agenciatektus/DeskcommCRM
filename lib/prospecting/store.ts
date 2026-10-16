@@ -588,11 +588,17 @@ export async function activateCampaign(
       ).rows.length
     )
       throw new ProspectingError("Pause a campanha atual antes de iniciar outra.", 409);
-    if (c.config && JSON.stringify(campaignConfigSchema.parse(c.config)) !== JSON.stringify(config))
-      throw new ProspectingError(
-        "A preparação já começou. Retome com a mesma configuração da campanha.",
-        409,
-      );
+    if (c.config) {
+      // Config PARCIAL salva pelo meio (sem `agent_id`) não pode ser comparada:
+      // o `parse` cru estourava ZodError antes de qualquer comparação e a
+      // campanha ficava sem como ser iniciada (medido na VPS: 3 rascunhos).
+      const salva = campaignConfigSchema.safeParse(c.config);
+      if (salva.success && JSON.stringify(salva.data) !== JSON.stringify(config))
+        throw new ProspectingError(
+          "A preparação já começou. Retome com a mesma configuração da campanha.",
+          409,
+        );
+    }
     await db.query(
       "update prospecting_campaigns set config=$3 where organization_id=$1 and id=$2",
       [org, id, config],
