@@ -254,12 +254,14 @@ export function montarEstrategia(entrada: EntradaDaEstrategia): EstrategiaDoLead
   // `status` é o de `prospecting_candidates` ('new','queued','sending','sent',
   // 'skipped','failed'): só 'sent' foi abordado. Vazio = quem chama não sabe (o
   // Inbox): sem passo, em vez de afirmar um contato que talvez não houve.
+  // 'skipped' (a triagem descartou) e 'failed' também ficam sem passo: sugerir
+  // envio convidaria a abordar quem foi barrado.
   const proximoPasso =
     entrada.followUpsEnviados > 0
       ? `Já foram ${entrada.followUpsEnviados} follow-up(s): gere a próxima copy trazendo um elemento NOVO (prazo, exemplo, diagnóstico) — repetir o argumento queima o lead.`
       : entrada.status === "sent"
         ? "Lead contatado sem resposta: follow-up leve de lembrete, com pedido de ação fechado."
-        : entrada.status === ""
+        : ["", "skipped", "failed"].includes(entrada.status)
           ? ""
           : "Gere a prévia da abordagem, revise com seu tom e envie pelo WhatsApp; ao responder, siga com a estratégia acima. Depois marque como contatado.";
 

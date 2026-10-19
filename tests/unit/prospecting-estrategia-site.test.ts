@@ -48,6 +48,10 @@ describe("estrategia-site", () => {
     expect(montarEstrategia({ ...base, status: "sent" }).proximoPasso).toMatch(/^Lead contatado sem resposta/);
     // Status desconhecido (o Inbox não sabe o do candidato): não afirma contato nenhum.
     expect(montarEstrategia({ ...base, status: "" }).proximoPasso).toBe("");
+    // Descartado pela triagem ou com falha: nada de sugerir envio.
+    for (const status of ["skipped", "failed"]) {
+      expect(montarEstrategia({ ...base, status }).proximoPasso).toBe("");
+    }
   });
 
   it("fora-do-ar abre como aviso de cortesia", () => {

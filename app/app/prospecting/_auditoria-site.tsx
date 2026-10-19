@@ -93,7 +93,9 @@ export function AuditoriaDoCandidato({
   const mostraMotivo = score.motivo !== rotulo && score.motivo.toLowerCase() !== rotulo.toLowerCase();
   const auditoria = (
     <AuditoriaDoSite
-      site={site}
+      // Só o veredito GRAVADO tem data: o derivado (sem site) leva o instante
+      // da leitura, e "Verificado em <hoje>" afirmaria uma verificação que não houve.
+      site={data.site ? site : { ...site, verificado_em: undefined }}
       nota={data.rating}
       numAvaliacoes={data.reviews}
       temInstagram={temInstagram}

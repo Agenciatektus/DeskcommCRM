@@ -487,6 +487,16 @@ describe("H: o preparo automático na lista", () => {
     expect(within(modal).getByText(/Gere a prévia da abordagem, revise com seu tom/)).toBeVisible();
   });
 
+  it("empresa sem site não mostra data de verificação: o veredito é derivado, ninguém verificou", async () => {
+    openPage();
+    const linha = await screen.findByRole("row", { name: /Sem site nenhum/ });
+    fireEvent.click(within(linha).getByRole("button", { name: "Ver detalhes" }));
+    const modal = await screen.findByRole("dialog");
+    // Controle positivo: a auditoria do derivado está na janela.
+    expect(within(modal).getByText("Sem site próprio")).toBeVisible();
+    expect(within(modal).queryByText(/Verificado em/)).toBeNull();
+  });
+
   it("o botão manual 'Prévia da abordagem' continua no detalhe", async () => {
     openPage();
     const linha = await screen.findByRole("row", { name: /Com site saudável/ });
