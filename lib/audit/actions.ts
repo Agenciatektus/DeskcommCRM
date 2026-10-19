@@ -57,6 +57,9 @@ export const AUDIT_ACTIONS = [
   "lead.imported",
   "contact.created",
   "contact.updated",
+  // A varredura que copia o nome salvo na agenda do celular para a ficha.
+  // Uma linha por empresa, em cada rodada que preencheu alguém dela — não uma por contato.
+  "contact.address_book_name_filled",
   "contacts.imported",
   "contact.anonymized",
   "contact.merge_pending",
@@ -349,6 +352,7 @@ export const AUDIT_ACTIONS = [
   "followup_flow.disabled",
   "followup_flow.deleted",
   "followup_flow.duplicated",
+  "followup_flow.imported",
   "followup_flow.rolled_back",
   "followup.worker_run",
   "followup.silence_sweep_run",
@@ -1154,12 +1158,25 @@ export const AUDIT_ACTIONS = [
   // A marca foi removida: só limpa `ai_opt_out`; a conversa segue com a trava
   // de handoff de quem a pôs.
   "contacts.always_human_unmarked",
+  // A tela de Contatos devolvendo a base em CSV/vCard (#2759) — portabilidade,
+  // LGPD art. 18, V. Audita o GESTO com o total de linhas e os filtros que
+  // valiam, nunca o termo de busca.
+  "contacts.exported",
   // O operador carregou a imagem que a Resposta rápida passa a enviar junto
   // com o texto — `POST /message-templates/:id/midias` (#2526). A REMOÇÃO não
   // tem código próprio: ela acontece dentro do `template.updated` (campo
   // `removidas` no metadata) ou dentro do `template.deleted`, que são os atos
   // em que a imagem sai de fato.
   "template.media_added",
+  // O cron de lembrete de tarefa (#2529) avisou RESPONSÁVEIS nesta rodada —
+  // só quando houve efeito, como manda a lei do §Audit log. O metadata traz
+  // quantas tarefas, quantas puladas e por quê; nunca o número de WhatsApp de
+  // ninguém.
+  "task.reminder_batch",
+  // A pessoa gravou a própria preferência de lembrete de tarefa (os dois
+  // interruptores, a antecedência e o opt-in de WhatsApp). O número NÃO entra:
+  // é dado de contato, e o audit é trilha legível por quem administra.
+  "user.task_reminder_prefs_updated",
   // "Sincronizar agenda do celular" (#2736): o gesto de IMPORTAR em bloco a
   // agenda do aparelho pareado — mesmo porquê do `contacts.imported` de planilha
   // ("quem trouxe esta base, e quando"), agora com o número de qual conexão veio.

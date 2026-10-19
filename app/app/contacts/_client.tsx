@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
-import { Plus, MagnifyingGlass, UploadSimple, UsersThree, ArrowsClockwise } from "@/lib/ui/icons";
+import { Plus, DownloadSimple, MagnifyingGlass, UploadSimple, UsersThree, ArrowsClockwise } from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,6 +27,8 @@ import { NewContactDialog } from "@/components/contacts/NewContactDialog";
 import { ImportContactsDialog } from "@/components/contacts/ImportContactsDialog";
 import { SyncPhoneContactsDialog } from "@/components/contacts/SyncPhoneContactsDialog";
 import { TAG_DE_CLIENTE } from "@/lib/contacts/cliente";
+import { queryDaExportacao, type FormatoDeExport } from "@/lib/contacts/exportar";
+import { roleAtLeast } from "@/lib/auth/types";
 import { ORIGEM_AGENDA_DO_CELULAR } from "@/lib/leads/origem-do-contato";
 import { type ModoDeEtiqueta } from "@/lib/inbox/marcador-da-conversa";
 import { useActiveOrg, usePermission } from "@/hooks/auth/AuthProvider";
@@ -56,7 +58,8 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 export function ContactsListClient() {
   const t = useT();
-  const clientesLigado = useActiveOrg()?.cliente_pela_agenda === true;
+  const orgAtiva = useActiveOrg();
+  const clientesLigado = orgAtiva?.cliente_pela_agenda === true;
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   // VÁRIAS etiquetas com E/OU (#1274). O estado é a LISTA, e uma etiqueta só é
@@ -153,9 +156,37 @@ export function ContactsListClient() {
     [orderBy],
   );
 
+  // O MESMO gate da rota (`requireRole("manager")`): um botão que só devolve
+  // 403 é armadilha — quem tem papel de leitura nem vê a porta.
+  const podeExportar = roleAtLeast(orgAtiva?.role, "manager");
+
+  /**
+   * Exportar é exportar o QUE A TELA ESTÁ MOSTRANDO: os mesmos filtros da lista
+   * viajam na query (busca, etiquetas em E/OU, origem, pessoais), sem `cursor`
+   * nem `limit` — o arquivo é o conjunto filtrado inteiro, não a página que a
+   * pessoa rolou até aqui.
+   */
+  const exportar = useCallback(
+    (formato: FormatoDeExport) => {
+      const qs = queryDaExportacao(formato, {
+        search,
+        tags,
+        tagMode,
+        source,
+        pessoais: soPessoais,
+        order_by: orderBy,
+        order_dir: orderDir,
+      });
+      // `Content-Disposition: attachment` na resposta faz o navegador baixar,
+      // não navegar — o mesmo gesto do "Exportar CSV" da tela de auditoria.
+      window.location.href = `/api/v1/contacts/export?${qs}`;
+    },
+    [search, tags, tagMode, source, soPessoais, orderBy, orderDir],
+  );
+
   return (
     <div className="space-y-4 p-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">{t("Contatos")}</h1>
           <p className="text-sm text-muted-foreground">
@@ -163,14 +194,17 @@ export function ContactsListClient() {
           </p>
         </div>
         {/*
-          A estrutura é a da main (o "Importar CSV" do PR #313); o `shrink-0`
-          vem do PR #267, e vale para os botões agora: numa tela de 390px uma
-          linha de botões sem isso comprime os rótulos. Com o quarto botão
-          (#2736), o `flex-wrap` é o que impede a fileira de estourar o
-          cabeçalho — as etiquetas ficam inteiras e a segunda linha alinha à
-          direita.
+          A estrutura é a da main (o "Importar CSV" do PR #313). Os botões
+          QUEBRAM linha em vez de passar da tela: o `whitespace-nowrap` do
+          Button impede o rótulo de comprimir, e sem `flex-wrap` a fila
+          estourava em 390px (medido: "Novo contato" em 446–585). O `shrink-0`
+          do PR #267 saiu por outro motivo: com o header em linha (sm+), ele
+          esmagava o título até largura 0. O `flex-wrap` do header faz o mesmo
+          um nível acima: quando título e botões não cabem lado a lado, os
+          botões descem de linha e o título não é espremido. Onde cabem
+          (1280px), nada muda.
         */}
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/*
             A porta do recurso de duplicados fica AQUI, na tela que já existe, e
             não num item de menu novo: quem descobre que tem contato repetido
@@ -196,6 +230,31 @@ export function ContactsListClient() {
             <ArrowsClockwise size={16} weight="bold" aria-hidden />
             <span>{t("Sincronizar agenda")}</span>
           </Button>
+          {/*
+            A porta de VOLTA do mesmo dado: importar sem exportar deixava o CRM
+            como saída única (SSH + psql), e o celular nem importa CSV — importa
+            vCard. Os dois formatos moram num menu porque são dois arquivos
+            diferentes para dois destinos diferentes, e um botão por formato
+            dobraria a largura do header numa tela de 390px.
+          */}
+          {podeExportar && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <DownloadSimple size={16} weight="bold" aria-hidden />
+                  <span>{t("Exportar")}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => exportar("csv")}>
+                  {t("Exportar CSV")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportar("vcf")}>
+                  {t("Exportar vCard")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button onClick={() => setCreateOpen(true)}>
             <Plus size={16} weight="bold" aria-hidden />
             <span>{t("Novo contato")}</span>
