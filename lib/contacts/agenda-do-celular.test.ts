@@ -39,6 +39,8 @@ function fakeDeps(opcoes: {
   falhaEmit?: boolean;
   /** O carimbo de origem falha — idem: o contato já existe. */
   falhaMarca?: boolean;
+  /** Gravar o nome da agenda falha — idem: o contato já existe. */
+  falhaNome?: boolean;
 } = {}) {
   const paginas = opcoes.paginas ?? [[]];
   const variantesNoBanco = new Set((opcoes.existentes ?? []).flatMap(phoneLookupVariants));
@@ -47,6 +49,7 @@ function fakeDeps(opcoes: {
   const emits: string[] = [];
   const audits: Array<Record<string, unknown>> = [];
   const marcados: string[] = [];
+  const nomes: Array<{ contactId: string; nome: string }> = [];
   const deps: AgendaDeps = {
     listarPagina: async (_session, pagina) => {
       offsets.push(pagina.offset);
@@ -68,11 +71,15 @@ function fakeDeps(opcoes: {
       if (opcoes.falhaMarca) throw new Error("update indisponível");
       marcados.push(...ids);
     },
+    gravarNomeDaAgenda: async (_org, contactId, nome) => {
+      if (opcoes.falhaNome) throw new Error("update indisponível");
+      nomes.push({ contactId, nome });
+    },
     audit: async (entry) => {
       audits.push(entry as unknown as Record<string, unknown>);
     },
   };
-  return { deps, offsets, upserts, emits, audits, marcados };
+  return { deps, offsets, upserts, emits, audits, marcados, nomes };
 }
 
 async function sincronizar(f: ReturnType<typeof fakeDeps>) {
@@ -137,11 +144,35 @@ describe("sincronizarAgendaDoCelular", () => {
       truncado: false,
     });
     // O MESMO contrato da RPC do webhook: chatId para auditoria, telefone E.164
-    // e o nome que a PESSOA salvou (pushname é o fallback, não o contrário).
+    // e o apelido do PERFIL — o mesmo dado que a mensagem traria.
     expect(f.upserts).toEqual([
-      { organizationId: ORG, telefone: "+5511999990001", chatId: "5511999990001@c.us", notify: "Maria da Agenda" },
+      { organizationId: ORG, telefone: "+5511999990001", chatId: "5511999990001@c.us", notify: "maria.perfil" },
     ]);
     expect(f.emits).toEqual(["contato-1"]);
+  });
+
+  it("o nome salvo na agenda vai para o campo da equipe, nunca para o nome que o cliente vê (#2439)", async () => {
+    const f = fakeDeps({
+      paginas: [[
+        agenda("5511999990001@c.us", { name: "João obra", pushname: "joao" }),
+        // Agenda sem nome de gente (só o número) não grava nada.
+        agenda("5511999990002@c.us", { name: "+55 11 99999-0002" }),
+      ]],
+    });
+    await sincronizar(f);
+    expect(f.upserts.map((u) => u.notify)).toEqual(["joao", null]);
+    expect(f.nomes).toEqual([{ contactId: "contato-1", nome: "João obra" }]);
+  });
+
+  it("o nome da agenda que falha ao gravar não desfaz a criação nem derruba o lote", async () => {
+    const f = fakeDeps({
+      paginas: [[agenda("5511999990001@c.us", { name: "Ana" }), agenda("5511999990002@c.us", { name: "Bia" })]],
+      falhaNome: true,
+    });
+    const resumo = await sincronizar(f);
+    expect(resumo.importados).toBe(2);
+    expect(resumo.erros).toBe(0);
+    expect(f.emits).toEqual(["contato-1", "contato-2"]);
   });
 
   it("pagina até a página curta e soma o que leu", async () => {

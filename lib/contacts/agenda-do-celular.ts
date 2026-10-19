@@ -44,6 +44,7 @@
 import { audit as auditReal } from "@/lib/audit";
 import type { ContatoDoAparelho } from "@/lib/channels";
 import { phoneLookupVariants } from "@/lib/channels/phone-variants";
+import { nomeGravavel } from "@/lib/contacts/nome-da-agenda";
 import { ORIGEM_AGENDA_DO_CELULAR } from "@/lib/leads/origem-do-contato";
 import { logger } from "@/lib/logger";
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -101,8 +102,14 @@ interface Candidato {
   chatId: string;
   /** E.164 com `+`. A RPC canônica (nono dígito) faz o resto. */
   telefone: string;
-  /** Nome salvo na agenda; na falta, o pushname do perfil. */
+  /** O apelido do PERFIL (`pushname`) — o mesmo dado que o webhook passa à RPC. */
   notify: string | null;
+  /**
+   * O nome que a equipe SALVOU no celular. Vai para `address_book_name`, o
+   * campo que só a equipe vê — nunca para `name`/`display_name`, que o
+   * `{{nome}}` das campanhas lê (decisão do mantenedor no #2439; doc 158).
+   */
+  agenda: string | null;
 }
 
 export interface AgendaDeps {
@@ -125,6 +132,8 @@ export interface AgendaDeps {
    * e o filtro de origem não teriam como separar os dois (decisão do doc 158).
    */
   marcarOrigem(organizationId: string, contactIds: string[]): Promise<void>;
+  /** Grava o nome da agenda em `address_book_name` do contato que NASCEU agora. */
+  gravarNomeDaAgenda(organizationId: string, contactId: string, nome: string): Promise<void>;
   /**
    * A trilha do gesto — o MESMO `audit()` que o resto do sistema escreve.
    *
@@ -192,7 +201,8 @@ async function lerAgenda(
       candidatos.push({
         chatId: c.id,
         telefone,
-        notify: c.name ?? c.pushname ?? null,
+        notify: c.pushname ?? null,
+        agenda: nomeGravavel(c.name),
       });
     }
     // Página curta = o aparelho não tem mais. Página cheia no teto = tem mais,
@@ -270,6 +280,19 @@ export async function sincronizarAgendaDoCelular(
       // Reserva as variantes ANTES do evento: a próxima entrada de mesmo número
       // neste lote cai em "já existente" em vez de pagar a RPC de novo.
       for (const v of variantes) existentes.add(v);
+      if (candidato.agenda) {
+        try {
+          await deps.gravarNomeDaAgenda(e.organizationId, id, candidato.agenda);
+        } catch (err) {
+          // O contato já existe e não se desfaz; o cron de nomes da agenda
+          // (`contact-names`) pergunta de novo a quem ficou sem.
+          logger.warn("contacts.sync-agenda: contato criado sem o nome da agenda", {
+            organization_id: e.organizationId,
+            request_id: e.requestId,
+            detail: err instanceof Error ? err.message.slice(0, 160) : String(err),
+          });
+        }
+      }
       try {
         await deps.emitirContatoCriado({ organizationId: e.organizationId, contactId: id, requestId: e.requestId });
       } catch (err) {
@@ -389,6 +412,16 @@ export function criarDepsDeAgenda(
         // caminho criou com outra origem no meio do lote não é reescrito.
         .eq("source", "whatsapp")
         .in("id", contactIds);
+      if (error) throw new Error(error.message);
+    },
+    gravarNomeDaAgenda: async (organizationId, contactId, nome) => {
+      const { error } = await admin
+        .from("contacts")
+        .update({ address_book_name: nome })
+        .eq("organization_id", organizationId)
+        .eq("id", contactId)
+        // Não reescreve um nome da agenda que outro caminho já gravou.
+        .is("address_book_name", null);
       if (error) throw new Error(error.message);
     },
     audit: (entry) => auditReal(entry),
