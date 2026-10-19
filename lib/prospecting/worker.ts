@@ -413,7 +413,8 @@ const ORGS_COM_PREPARO_PENDENTE =
   "and exists (select 1 from prospecting_candidates c where c.organization_id=pc.organization_id " +
   "and c.campaign_id=pc.id and c.selected is not false and c.status in ('new','queued') and (" +
   // (a) verificação por fazer: site na web sem veredito, ou provisório já elegível a nova tentativa
-  // (os interruptores da busca: `avaliar_site` e `gerar_previa` desligados tiram a organização da rodada)
+  // (os interruptores da busca: `avaliar_site` e `gerar_previa` desligados tiram a organização da rodada;
+  // chave ausente = avaliação ligada e prévia DESLIGADA, a mesma régua de `opcoesDoPreparo`)
   "(coalesce(pc.search->>'avaliar_site','true') <> 'false' and " +
   "nullif(trim(c.data->>'website'), '') is not null and (c.data->'site' is null " +
   `or (coalesce((c.data->'site'->>'provisorio')::boolean, false) ` +
@@ -422,7 +423,7 @@ const ORGS_COM_PREPARO_PENDENTE =
   // (b) prévia por gerar: veredito definitivo (ou sem site) e nenhuma prévia. Sem exigir agente
   // na campanha: o agente padrão da organização a atende (`config-padrao.ts`); quem decide se
   // existe um é o preparo, em TS.
-  "or (coalesce(pc.search->>'avaliar_site','true') <> 'false' and coalesce(pc.search->>'gerar_previa','true') <> 'false' and c.data->'previa' is null " +
+  "or (coalesce(pc.search->>'avaliar_site','true') <> 'false' and coalesce(pc.search->>'gerar_previa','false') = 'true' and c.data->'previa' is null " +
   "and ((c.data->'site' is not null and not coalesce((c.data->'site'->>'provisorio')::boolean, false)) " +
   "or (c.data->'site' is null and nullif(trim(c.data->>'website'), '') is null))))) " +
   "group by pc.organization_id order by min(pc.updated_at) limit 20";

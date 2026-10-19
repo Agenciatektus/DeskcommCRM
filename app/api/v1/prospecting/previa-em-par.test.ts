@@ -85,7 +85,7 @@ const DADOS = {
   socials: ["https://instagram.com/vitta"],
   site: SITE_OK,
 };
-const SEARCH = { niche: "clínica" };
+const SEARCH = { niche: "clínica", avaliar_site: true, gerar_previa: true };
 
 beforeEach(() => {
   vi.clearAllMocks();

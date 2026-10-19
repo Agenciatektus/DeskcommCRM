@@ -557,6 +557,17 @@ describe("tick × preparo automático (B2)", () => {
     expect(segunda).toContain("data->'previa' is null");
   });
 
+  it("espelho SQL de `opcoesDoPreparo` (doc 163, B): sem a chave, a prévia NÃO entra; a verificação do site, sim", async () => {
+    const { pool, sqls } = montar({ segundaConsulta: [ORG_B] });
+    await tickProspecting(pool as never, {} as never);
+    const segunda = sqls[1]!;
+    // Prévia: só `true` gravado liga — chave ausente (campanha antiga) cai no 'false'.
+    expect(segunda).toContain("coalesce(pc.search->>'gerar_previa','false') = 'true'");
+    expect(segunda).not.toContain("coalesce(pc.search->>'gerar_previa','true')");
+    // Verificação do site: só `false` gravado desliga — chave ausente segue verificando.
+    expect(segunda).toContain("coalesce(pc.search->>'avaliar_site','true') <> 'false'");
+  });
+
   it("une as duas listas sem duplicar: a mesma organização é preparada uma vez", async () => {
     const { pool, ordem } = montar({ segundaConsulta: [ORG_A, ORG_B] });
     await tickProspecting(pool as never, {} as never);

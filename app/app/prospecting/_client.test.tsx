@@ -94,12 +94,16 @@ function candidato(id: string, campaignId: string, data: unknown, selected?: boo
   };
 }
 
+const BUSCA_NOVA = { niche: "x", location: "y", avaliar_site: true, gerar_previa: true };
+
 function fixture() {
   return {
     configured: true,
     campaigns: [
       {
         id: COMPLETA,
+        // Busca nova: o formulário grava as duas chaves do preparo (`opcoesDoPreparo`).
+        search: BUSCA_NOVA,
         name: "Clínicas de estética",
         status: "draft",
         search_status: "succeeded",
@@ -112,6 +116,7 @@ function fixture() {
       },
       {
         id: PARCIAL,
+        search: BUSCA_NOVA,
         name: "Imobiliária parcial",
         status: "draft",
         search_status: "succeeded",
@@ -327,6 +332,29 @@ describe("H: o preparo automático na lista", () => {
     expect(within(linha).queryByText("Gerando prévia…")).toBeNull();
     // E o contador de prévias some: não há prévia a esperar.
     expect(screen.queryByText(/Prévias:/)).toBeNull();
+  });
+
+  it("campanha antiga (sem as chaves do preparo): a prévia nasce desligada e o site segue verificado (doc 163, B)", async () => {
+    api.get.mockImplementation(async () => {
+      const base = fixture();
+      return {
+        data: {
+          ...base,
+          campaigns: base.campaigns.map((c) =>
+            c.id === COMPLETA ? { ...c, search: { niche: "x", location: "y" } } : c,
+          ),
+          candidates: [candidato("i1", COMPLETA, empresa("Campanha de antes", "https://saudavel.test/", SITE_OK))],
+        },
+      };
+    });
+    openPage();
+    const linha = await screen.findByRole("row", { name: /Campanha de antes/ });
+    expect(
+      within(linha).getByText("Prévia desligada nesta busca: o agente escreve a mensagem na hora do envio."),
+    ).toBeVisible();
+    expect(within(linha).queryByText("Gerando prévia…")).toBeNull();
+    expect(screen.queryByText(/Prévias:/)).toBeNull();
+    expect(screen.getByText(/Sites verificados:/)).toBeVisible();
   });
 
   it("interruptor 'Avaliar o site' desligado: o contador avisa em vez de prometer verificação", async () => {

@@ -30,6 +30,8 @@ const ORG = "99999999-9999-4999-8999-999999999999";
 const AGENTE = "55555555-5555-4555-8555-555555555555";
 const C1 = "11111111-1111-4111-8111-111111111111";
 const C2 = "11111111-1111-4111-8111-111111111112";
+/** A busca nova grava as duas chaves (o formulário e o `searchSchema` as preenchem). */
+const BUSCA_NOVA = { niche: "clínica", avaliar_site: true, gerar_previa: true };
 const SEGREDO = "TEXTO-SECRETO-DA-PREVIA";
 const CONFIG = {
   agent_id: AGENTE,
@@ -104,8 +106,8 @@ function montar(c: Cenario = {}) {
       if (sql.includes("from prospecting_campaigns")) {
         if (c.falhaNaCampanhas) throw c.falhaNaCampanhas;
         return {
-          rows: (c.campanhas ?? [{ id: C1, config: CONFIG, search: { niche: "clínica" } }]).map(
-            (x) => ({ search: null, ...x }),
+          rows: (c.campanhas ?? [{ id: C1, config: CONFIG, search: BUSCA_NOVA }]).map(
+            (x) => ({ search: BUSCA_NOVA, ...x }),
           ),
         };
       }
@@ -155,7 +157,7 @@ describe("B) quem recebe prévia", () => {
     };
     const { pool, sqls } = montar({
       campanhas: [
-        { id: C1, config: CONFIG, search: { niche: "clínica" } },
+        { id: C1, config: CONFIG, search: BUSCA_NOVA },
         // Rascunho ainda sem agente: só verifica o site.
         { id: C2, config: { instruction: "Oferecer uma avaliação comercial." } },
       ],
@@ -229,9 +231,20 @@ describe("B) quem recebe prévia", () => {
     expect(mocks.gerar).not.toHaveBeenCalled();
   });
 
-  it("campanha antiga (sem as chaves) segue com tudo ligado", async () => {
+  it("campanha antiga (sem as chaves): verifica o site, mas NÃO gera prévia (doc 163, B)", async () => {
     const { pool } = montar({
+      padrao: CONFIG,
       campanhas: [{ id: C1, config: CONFIG, search: { niche: "clínica" } }],
+      candidatos: { [C1]: [cand("a")] },
+    });
+    await rodar(pool);
+    expect(mocks.enriquecer).toHaveBeenCalledTimes(1);
+    expect(mocks.gerar).not.toHaveBeenCalled();
+  });
+
+  it("busca nova (as duas chaves gravadas) gera a prévia", async () => {
+    const { pool } = montar({
+      campanhas: [{ id: C1, config: CONFIG, search: BUSCA_NOVA }],
       candidatos: { [C1]: [cand("a")] },
     });
     await rodar(pool);

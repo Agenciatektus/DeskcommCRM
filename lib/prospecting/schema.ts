@@ -50,7 +50,8 @@ export const searchSchema = z
     limit: z.number().int().min(1).max(100).default(20),
     budget_usd: z.number().min(0.5).max(10).default(1),
     enrich: z.boolean().default(true),
-    // Preparo automático (B2) — ver `opcoes-do-preparo.ts`. Ligados por padrão.
+    // Preparo automático (B2) — ver `opcoes-do-preparo.ts`. Ligados por padrão NA BUSCA
+    // NOVA (que grava as duas chaves); campanha antiga, sem a chave, não gera prévia.
     avaliar_site: z.boolean().default(true),
     gerar_previa: z.boolean().default(true),
   })
