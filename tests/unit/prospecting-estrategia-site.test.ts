@@ -28,7 +28,7 @@ const base: EntradaDaEstrategia = {
   ofertas: ["site"],
   nicho: "clínica de estética",
   provisorio: false,
-  status: "novo",
+  status: "new",
   followUpsEnviados: 0,
 };
 
@@ -39,6 +39,15 @@ describe("estrategia-site", () => {
     expect(e.angulo).toContain("complemento");
     expect(e.ganchos.join(" ")).toContain("whatsapp");
     expect(e.objecoes.length).toBeGreaterThan(0);
+  });
+
+  it("próximo passo segue o vocabulário de prospecting_candidates.status", () => {
+    for (const status of ["new", "queued", "sending"]) {
+      expect(montarEstrategia({ ...base, status }).proximoPasso).toMatch(/^Gere a prévia da abordagem/);
+    }
+    expect(montarEstrategia({ ...base, status: "sent" }).proximoPasso).toMatch(/^Lead contatado sem resposta/);
+    // Status desconhecido (o Inbox não sabe o do candidato): não afirma contato nenhum.
+    expect(montarEstrategia({ ...base, status: "" }).proximoPasso).toBe("");
   });
 
   it("fora-do-ar abre como aviso de cortesia", () => {
@@ -215,7 +224,7 @@ describe("a estratégia vai para o agente sem carregar conteúdo de terceiro", (
     const estrategia = estrategiaDoCandidato(data, site, {
       ofertas: ["site"],
       nicho: "clínica",
-      status: "novo",
+      status: "new",
     });
     const bloco = blocoDeEstrategiaParaAgente(estrategia);
     const instrucao = instrucaoDeAbordagemFria(
@@ -239,7 +248,7 @@ describe("a estratégia vai para o agente sem carregar conteúdo de terceiro", (
     const estrategia = estrategiaDoCandidato(data, site, {
       ofertas: ["site"],
       nicho: "clínica",
-      status: "novo",
+      status: "new",
     });
     const curta = blocoDeEstrategiaParaAgente({
       ...estrategia,
@@ -265,7 +274,7 @@ describe("a estratégia vai para o agente sem carregar conteúdo de terceiro", (
     const estrategia = estrategiaDoCandidato(data, site, {
       ofertas: ["site"],
       nicho: "clínica",
-      status: "novo",
+      status: "new",
     });
     const comEstrategia = instrucaoDeAbordagemFria(
       "Instrução do operador",

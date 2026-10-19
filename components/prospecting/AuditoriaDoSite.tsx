@@ -1,6 +1,9 @@
 "use client";
 
+import { format } from "date-fns";
+
 import { useT } from "@/hooks/i18n/useT";
+import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import {
   descreverProblema,
   type ClasseDeSite,
@@ -19,6 +22,8 @@ export interface AuditoriaDoSiteDados {
   problemas: string[];
   checklist: { tem: string[]; falta: string[] };
   provisorio?: boolean;
+  /** Quando o veredito foi medido (ISO). Ausente em dado antigo: a data não aparece. */
+  verificado_em?: string;
 }
 /**
  * Auditoria do site — só leitura. Mesma seção no painel do inbox
@@ -46,6 +51,8 @@ export function AuditoriaDoSite({
   sobrescritaVocabulario?: Record<string, string> | null;
 }) {
   const t = useT();
+  const locale = useLocaleDeData();
+  const verificadoEm = site.verificado_em ? new Date(site.verificado_em) : null;
   const tem: ItemDoRaioX[] = (site.checklist?.tem ?? []).filter((i): i is ItemDoRaioX => i in ROTULOS_DO_CHECKLIST);
   const falta: ItemDoRaioX[] = (site.checklist?.falta ?? []).filter((i): i is ItemDoRaioX => i in ROTULOS_DO_CHECKLIST);
   const estrategia = montarEstrategia({
@@ -70,6 +77,11 @@ export function AuditoriaDoSite({
           {rotuloDaClasse(site.classe, t)}
           {site.provisorio === true ? ` — ${t("verificação pendente, sem citar na abordagem")}` : ""}
         </p>
+        {verificadoEm && !Number.isNaN(verificadoEm.getTime()) && (
+          <p className="text-xs text-muted-foreground">
+            {t("Verificado em")} {format(verificadoEm, "P", { locale })}
+          </p>
+        )}
       </div>
       {site.problemas.length > 0 && (
         <ul className="list-disc space-y-1 pl-4 text-xs">
@@ -123,10 +135,12 @@ export function AuditoriaDoSite({
             </ul>
           </div>
         )}
-        <p className="mt-2">
-          <span className="font-medium">{t("Próximo passo")}: </span>
-          {estrategia.proximoPasso}
-        </p>
+        {estrategia.proximoPasso && (
+          <p className="mt-2">
+            <span className="font-medium">{t("Próximo passo")}: </span>
+            {estrategia.proximoPasso}
+          </p>
+        )}
       </div>
     </div>
   );

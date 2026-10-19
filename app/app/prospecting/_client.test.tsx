@@ -442,6 +442,51 @@ describe("H: o preparo automático na lista", () => {
     expect(contador).not.toHaveTextContent("Prévias");
   });
 
+  it("campanha antiga (prévia automática desligada): o botão manual 'Prévia da abordagem' segue habilitado (doc 163, B)", async () => {
+    api.get.mockImplementation(async () => {
+      const base = fixture();
+      return {
+        data: {
+          ...base,
+          campaigns: base.campaigns.map((c) =>
+            c.id === COMPLETA ? { ...c, search: { niche: "x", location: "y" } } : c,
+          ),
+          candidates: [candidato("m1", COMPLETA, empresa("Antiga com agente", "https://saudavel.test/", SITE_OK))],
+        },
+      };
+    });
+    openPage();
+    const linha = await screen.findByRole("row", { name: /Antiga com agente/ });
+    fireEvent.click(within(linha).getByRole("button", { name: "Ver detalhes" }));
+    const modal = await screen.findByRole("dialog");
+    expect(within(modal).getByRole("button", { name: "Prévia da abordagem" })).toBeEnabled();
+    expect(within(modal).queryByText("Escolha o agente na etapa 2 para ver a prévia.")).toBeNull();
+  });
+
+  it("o detalhe mostra a data da verificação e o próximo passo de quem ainda não foi abordado", async () => {
+    api.get.mockImplementation(async () => ({
+      data: estado([
+        candidato(
+          "e1",
+          COMPLETA,
+          empresa("Site ruim nunca abordado", "https://ruim.test/", {
+            ...SITE_OK,
+            classe: "site-ruim",
+            problemas: ["nao-mobile"],
+          }),
+        ),
+      ]),
+    }));
+    openPage();
+    const linha = await screen.findByRole("row", { name: /Site ruim nunca abordado/ });
+    fireEvent.click(within(linha).getByRole("button", { name: "Ver detalhes" }));
+    const modal = await screen.findByRole("dialog");
+    // SITE_OK.verificado_em = 2026-10-10T12:00Z; o locale da sessão de teste é pt-BR.
+    expect(within(modal).getByText(/Verificado em/)).toHaveTextContent("10/10/2026");
+    expect(within(modal).queryByText(/Lead contatado sem resposta/)).toBeNull();
+    expect(within(modal).getByText(/Gere a prévia da abordagem, revise com seu tom/)).toBeVisible();
+  });
+
   it("o botão manual 'Prévia da abordagem' continua no detalhe", async () => {
     openPage();
     const linha = await screen.findByRole("row", { name: /Com site saudável/ });
@@ -462,6 +507,29 @@ describe("H: recarrega sozinha enquanto há o que preparar, e para quando zera",
     act(async () => {
       await vi.advanceTimersByTimeAsync(ms);
     });
+
+  it("busca nova em andamento com a lista VAZIA recarrega até as empresas chegarem", async () => {
+    const buscando = {
+      ...estado([]),
+      campaigns: fixture().campaigns.map((c) =>
+        c.id === COMPLETA ? { ...c, search_status: "running", result_count: 0 } : c,
+      ),
+    };
+    const concluida = estado([
+      candidato("b1", COMPLETA, {
+        ...empresa("B1", "https://saudavel.test/", SITE_OK),
+        previa: PREVIA_VALIDA,
+      }),
+    ]);
+    api.get.mockResolvedValueOnce({ data: buscando }).mockResolvedValue({ data: concluida });
+    openPage();
+    await passar(100);
+    expect(api.get).toHaveBeenCalledTimes(1);
+    await passar(10_000);
+    expect(api.get).toHaveBeenCalledTimes(2); // a busca andava: recarregou sem F5
+    await passar(60_000);
+    expect(api.get).toHaveBeenCalledTimes(2); // busca concluída e nada por preparar: parou
+  });
 
   it("com tudo pronto (sites verificados e prévias geradas) NÃO recarrega", async () => {
     api.get.mockImplementation(async () => ({

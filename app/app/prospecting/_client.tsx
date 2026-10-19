@@ -114,10 +114,25 @@ const TRECHO_DA_PREVIA = 140;
  * prévia…" onde o servidor de fato vai gerar: com agente na campanha, ou com o agente padrão da organização.
  */
 function campanhaGeraPrevia(c: Campaign, previaPadrao: boolean): boolean {
+  if (!opcoesDoPreparo(c.search).gerarPrevia) return false;
+  return campanhaPodeGerarPrevia(c, previaPadrao);
+}
+
+/**
+ * Há agente com que gerar a prévia À MÃO (botão "Prévia da abordagem")? É o que
+ * `prever_abordagem` exige no servidor: o agente da campanha ou o padrão da
+ * organização. O interruptor "Gerar a prévia" decide só o automático — desligado,
+ * o botão continua valendo (doc 163, B: quem quiser a prévia a gera por ele).
+ */
+function campanhaPodeGerarPrevia(c: Campaign, previaPadrao: boolean): boolean {
   // Campanha sem agente (busca nova) também gera: o servidor usa o agente PADRÃO
   // da organização (`config-padrao.ts`) — se existe um (`previa_padrao`).
-  if (!opcoesDoPreparo(c.search).gerarPrevia) return false;
   return previaPadrao || (!!c.config && campaignConfigSchema.safeParse(c.config).success);
+}
+
+/** Campanha em que o servidor ainda trabalha: busca no provedor ou envio em curso (o mesmo corte do worker). */
+function campanhaEmAndamento(c: Campaign): boolean {
+  return c.status === "running" || c.search_status === "starting" || c.search_status === "running";
 }
 
 /**
@@ -226,9 +241,15 @@ export function ProspectingClient() {
     // A fila se completa sozinha enquanto o preparo automático tiver o que fazer
     // (site por verificar OU prévia por gerar); com os dois zerados, o polling
     // para — recarregar a cada 10s para sempre seria tráfego sem leitor.
+    // Busca ou envio em andamento também recarrega: a busca nova começa com a
+    // lista VAZIA, e sem isto a tela ficava em "0 empresas" até o F5.
     refetchInterval: (consulta) => {
       const estado = consulta.state.data as State | undefined;
-      return estado && algoPorPreparar(estado, new Date().toISOString()) ? 10000 : false;
+      if (!estado) return false;
+      return estado.campaigns.some(campanhaEmAndamento) ||
+        algoPorPreparar(estado, new Date().toISOString())
+        ? 10000
+        : false;
     },
   });
   const data = query.data;
@@ -443,6 +464,7 @@ export function ProspectingClient() {
   // abordada, então não entra em nenhuma das duas contas). Mesmas funções puras
   // que o servidor e o recarregamento usam.
   const temAgenteNaCampanha = !!campaign && campanhaGeraPrevia(campaign, data?.previa_padrao === true);
+  const podeGerarPreviaAMao = !!campaign && campanhaPodeGerarPrevia(campaign, data?.previa_padrao === true);
   const marcadas = candidates.filter((c) => c.selected !== false);
   const opcoes = opcoesDoPreparo(campaign?.search);
   const sitesVerificados = marcadas.length - pendentesDeSite;
@@ -1602,7 +1624,7 @@ export function ProspectingClient() {
                                 nicho={nichoDaCampanha || c.data.category || ""}
                                 status={c.status ?? c.progress}
                                 disabled={busy}
-                                temAgente={temAgenteNaCampanha}
+                                temAgente={podeGerarPreviaAMao}
                                 sobrescritaVocabulario={data?.personalizacao?.vocabulario ?? null}
                                 onReanalisar={reanalisarSite}
                                 onPrevia={preverAbordagem}

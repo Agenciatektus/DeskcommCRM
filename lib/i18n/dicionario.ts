@@ -16180,6 +16180,7 @@ export const DICIONARIO: Traducoes = {
     es: "Elige el agente en el paso 2 para ver la vista previa.",
   },
   "Sites verificados:": { es: "Sitios verificados:" },
+  "Verificado em": { es: "Verificado el" },
   "Prévias:": { es: "Vistas previas:" },
   "Prévia: escolha o agente na etapa 2": { es: "Vista previa: elige el agente en el paso 2" },
   "Avaliar o site de cada empresa automaticamente": { es: "Evaluar automáticamente el sitio de cada empresa" },
