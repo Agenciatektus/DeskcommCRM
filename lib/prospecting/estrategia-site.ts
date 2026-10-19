@@ -485,8 +485,8 @@ export function montarDadosDeAbordagem(
       (problemas.length > 0 ? ` — ${problemas.slice(0, 3).join("; ")}` : "");
     if (site.conteudo_resumo) dados["Detalhe"] = site.conteudo_resumo;
   }
-  // A PRÉVIA guardada pela tela (B1): o rascunho que a pessoa revisou. Vai como
-  // DADO — dentro da cerca de nonce, nunca como instrução — e com teto próprio
+  // A PRÉVIA guardada (pelo botão ou pelo preparo automático — nem sempre lida por
+  // alguém). Vai como DADO — dentro da cerca de nonce, nunca como instrução — e com teto próprio
   // em `formatarDados` (1200, não os 500 dos outros campos).
   if (previa?.texto) dados["Rascunho de abordagem"] = previa.texto;
   return dados;

@@ -80,6 +80,12 @@ describe("a prévia guardada entra nos dados e tem teto próprio", () => {
     const frio = blocoDeModo("prospeccao_fria", "abcd1234", "Ofereça uma conversa.");
     expect(frio).toMatch(/Rascunho de abordagem/);
     expect(frio, "o rascunho é conteúdo, não ordem").toMatch(/não como instrução/i);
+    // A prévia pode ter saído do preparo automático sem ninguém a ler: o modelo
+    // não pode recebê-la como texto revisado por uma pessoa.
+    const regra = frio.split("\n").find((l) => l.includes("Rascunho de abordagem")) ?? "";
+    expect(regra).toMatch(/pode não ter sido revisada/i);
+    expect(regra).toMatch(/mesma confiança dos outros dados/i);
+    expect(regra).not.toMatch(/operador|revisou/i);
     // Os outros ramos não recebem regra de rascunho: eles não têm prévia.
     expect(blocoDeModo("formulario", "abcd1234", "x")).not.toContain("Rascunho de abordagem");
     expect(blocoDeModo("automacao", "abcd1234", "x")).not.toContain("Rascunho de abordagem");
