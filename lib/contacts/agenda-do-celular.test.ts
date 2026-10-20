@@ -61,6 +61,10 @@ function fakeDeps(opcoes: {
       upserts.push(e);
       if (opcoes.falhaUpsertEm?.includes(e.telefone)) throw new Error("rpc indisponível");
       if (opcoes.upsertNulo) return null;
+      // A RPC grava de verdade: o telefone criado EXISTE no próximo clique.
+      // Sem isto o dublê mentiria que todo clique reencontra um banco vazio, e
+      // a retomada (que depende de "já existente" ser barato) não seria medida.
+      for (const v of phoneLookupVariants(e.telefone)) variantesNoBanco.add(v);
       return `contato-${upserts.length}`;
     },
     emitirContatoCriado: async (e) => {
@@ -82,12 +86,13 @@ function fakeDeps(opcoes: {
   return { deps, offsets, upserts, emits, audits, marcados, nomes };
 }
 
-async function sincronizar(f: ReturnType<typeof fakeDeps>) {
+async function sincronizar(f: ReturnType<typeof fakeDeps>, offset = 0) {
   return sincronizarAgendaDoCelular(f.deps, {
     organizationId: ORG,
     session: "s1",
     actorUserId: USER,
     requestId: "req-1",
+    offset,
   });
 }
 
@@ -142,6 +147,7 @@ describe("sincronizarAgendaDoCelular", () => {
       ignorados: 4,
       erros: 0,
       truncado: false,
+      proximo_offset: null,
     });
     // O MESMO contrato da RPC do webhook: chatId para auditoria, telefone E.164
     // e o apelido do PERFIL — o mesmo dado que a mensagem traria.
@@ -223,7 +229,7 @@ describe("sincronizarAgendaDoCelular", () => {
     expect(f.upserts).toHaveLength(1);
   });
 
-  it("o teto de LEITURA corta a página com truncado — e não vira loop", async () => {
+  it("o teto de LEITURA corta a página com truncado e devolve o cursor — e não vira loop", async () => {
     // Só contatos FORA da agenda: a leitura é que bate no teto, não a importação.
     const foraDaAgenda = () =>
       Array.from({ length: TAMANHO_DA_PAGINA }, (_, i) =>
@@ -235,9 +241,12 @@ describe("sincronizarAgendaDoCelular", () => {
     expect(resumo.lidos).toBe(TETO_DE_LEITURA);
     expect(resumo.truncado).toBe(true);
     expect(f.offsets).toHaveLength(TETO_DE_LEITURA / TAMANHO_DA_PAGINA);
+    // Nada foi gravado, então o cursor é o fim da leitura: o próximo clique
+    // começa na linha 1.000, e não na zero.
+    expect(resumo.proximo_offset).toBe(TETO_DE_LEITURA);
   });
 
-  it("o teto de IMPORTAÇÃO corta em 500 criados e pede para continuar", async () => {
+  it("o teto de IMPORTAÇÃO corta em 500 criados e o cursor é a linha do primeiro NÃO gravado", async () => {
     const paginaCheia = (n: number) =>
       Array.from({ length: TAMANHO_DA_PAGINA }, (_, i) =>
         agenda(`5511666${String(n * 1000 + i).padStart(7, "0")}@c.us`),
@@ -248,6 +257,90 @@ describe("sincronizarAgendaDoCelular", () => {
     expect(resumo.importados).toBe(TETO_DE_IMPORTACOES);
     expect(resumo.truncado).toBe(true);
     expect(f.upserts).toHaveLength(TETO_DE_IMPORTACOES);
+    // O 501º candidato veio da linha 500 da agenda: é AQUI que o próximo clique
+    // recomeça. Devolver o fim da leitura (600) pularia 100 contatos para sempre.
+    expect(resumo.proximo_offset).toBe(TETO_DE_IMPORTACOES);
+  });
+
+  it("agenda dublê de 1.500 salvos: cada clique retoma no anterior, os 1.500 entram e o último fecha sem truncado", async () => {
+    const TOTAL = 1500;
+    // A agenda do aparelho: 15 páginas de 100, todas SALVAS e com WhatsApp. É a
+    // agenda que o mantenedor mediu em 16/10 — quatro cliques importavam
+    // 500, 500, 0 e 0, e os 500 depois do milésimo nunca entravam.
+    const paginas = Array.from({ length: TOTAL / TAMANHO_DA_PAGINA }, (_, p) =>
+      Array.from({ length: TAMANHO_DA_PAGINA }, (_, i) =>
+        agenda(`5511${String(p * TAMANHO_DA_PAGINA + i).padStart(8, "0")}@c.us`),
+      ),
+    );
+    const f = fakeDeps({ paginas });
+
+    type Clique = {
+      offset: number;
+      lidos: number;
+      importados: number;
+      ja_existentes: number;
+      truncado: boolean;
+      proximo_offset: number | null;
+    };
+    // O que a TELA faz: o `proximo_offset` do resumo vira o offset do clique
+    // seguinte. Nada aqui adivinha de onde continuar.
+    const cliques: Clique[] = [];
+    let offset = 0;
+    for (let n = 1; ; n += 1) {
+      const r = await sincronizar(f, offset);
+      cliques.push({
+        offset,
+        lidos: r.lidos,
+        importados: r.importados,
+        ja_existentes: r.ja_existentes,
+        truncado: r.truncado,
+        proximo_offset: r.proximo_offset,
+      });
+      const numeros = JSON.stringify(cliques, null, 0);
+      if (!r.truncado) break;
+      // Clique que corta e não grava nada é a rodinha girando: o cursor não
+      // avançou. Falha com os números de CADA clique no log.
+      expect(r.importados, `cliques: ${numeros}`).toBeGreaterThan(0);
+      expect(r.proximo_offset, `cliques: ${numeros}`).not.toBeNull();
+      offset = r.proximo_offset as number;
+      // 1.500 / 500 = 3 passadas; a folga é para o teste nunca entrar em laço.
+      expect(n, `cliques: ${numeros}`).toBeLessThan(6);
+    }
+
+    // 500 + 500 + 500, cada um numa faixa NOVA da agenda: nenhum voltou ao zero.
+    expect(cliques.map((c) => c.importados)).toEqual([500, 500, 500]);
+    expect(cliques.map((c) => c.offset)).toEqual([0, 500, 1000]);
+    // Os 1.500 entraram UMA vez cada — sem repetir e sem parar no milésimo.
+    expect(f.upserts).toHaveLength(TOTAL);
+    expect(new Set(f.upserts.map((u) => u.telefone)).size).toBe(TOTAL);
+    // O último clique fecha a conta com truncado false (e sem cursor pendente).
+    expect(cliques.at(-1)).toMatchObject({
+      truncado: false,
+      proximo_offset: null,
+      importados: 500,
+      lidos: 500,
+    });
+    // A 11ª leitura (a primeira do SEGUNDO clique) é a linha 500, não a zero:
+    // é isto que faltava e que deixava os 500 do fim inalcançáveis.
+    expect(f.offsets.slice(0, 11)).toEqual([0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 500]);
+  });
+
+  it("agenda pequena (12 salvos) resolve em UM clique, sem cursor pendente", async () => {
+    const paginas = [
+      Array.from({ length: 12 }, (_, i) => agenda(`5511555${String(i).padStart(7, "0")}@c.us`)),
+    ];
+    const f = fakeDeps({ paginas });
+    const resumo = await sincronizar(f);
+    expect(resumo).toMatchObject({
+      lidos: 12,
+      importados: 12,
+      ja_existentes: 0,
+      truncado: false,
+      proximo_offset: null,
+    });
+    // Uma página só, uma leitura só: nada a retomar.
+    expect(f.offsets).toEqual([0]);
+    expect(f.upserts).toHaveLength(12);
   });
 
   it("a falha de UM contato vira erro nominal e o lote segue", async () => {
@@ -324,6 +417,7 @@ describe("sincronizarAgendaDoCelular", () => {
       ignorados: 0,
       erros: 0,
       truncado: false,
+      proximo_offset: null,
     });
     expect(f.upserts).toHaveLength(0);
     expect(f.audits).toHaveLength(1);

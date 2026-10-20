@@ -45,6 +45,12 @@ export function SyncPhoneContactsDialog({ open, onOpenChange }: Props) {
   const sincronizar = useSyncPhoneContacts();
   const [escolhido, setEscolhido] = useState<string | null>(null);
   const [resumo, setResumo] = useState<ResumoDaAgenda | null>(null);
+  /**
+   * O cursor deste clique: começa em zero e passa a ser o `proximo_offset` que
+   * o resumo devolveu. É o que faz o segundo clique continuar no contato 501 em
+   * vez de reler as mil primeiras linhas e parar no milésimo (ponto 2 do CR).
+   */
+  const [retomada, setRetomada] = useState(0);
 
   // A pergunta é de CAPABILITY, não de provider — a tela não tem adapter em
   // mãos, então pergunta o que o canal PERMITE ("tem agenda do aparelho para
@@ -65,14 +71,20 @@ export function SyncPhoneContactsDialog({ open, onOpenChange }: Props) {
   function reset() {
     setEscolhido(null);
     setResumo(null);
+    setRetomada(0);
   }
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  /**
+   * Um clique = UMA passada da agenda, a partir de `retomada`. O
+   * `proximo_offset` que a rota devolve vira o offset do clique seguinte — a
+   * tela não guarda nada além dele, e nunca recomeça do zero escondido.
+   */
+  async function sincronizarAgora() {
     if (!numero || sincronizar.isPending) return;
     try {
-      const r = await sincronizar.mutateAsync(numero);
+      const r = await sincronizar.mutateAsync({ channelSessionId: numero, offset: retomada });
       setResumo(r);
+      setRetomada(r.proximo_offset ?? 0);
       if (r.importados > 0) toast.success(`${r.importados} ${t("contato(s) sincronizado(s)")}`);
       if (r.ja_existentes > 0) toast.info(`${r.ja_existentes} ${t("contato(s) já existente(s) — nada duplicado")}`);
       if (r.erros > 0) toast.warning(`${r.erros} ${t("contato(s) com erro na gravação")}`);
@@ -84,6 +96,16 @@ export function SyncPhoneContactsDialog({ open, onOpenChange }: Props) {
       toast.error(msg);
     }
   }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await sincronizarAgora();
+  }
+
+  // Há próximo clique quando a passada cortou E disse de onde retomar. Quem
+  // escolhe o número de novo (ou "Sincronizar de novo") recomeça do zero: o
+  // cursor pertence à agenda daquele número.
+  const continuar = resumo?.truncado === true && resumo.proximo_offset !== null;
 
   return (
     <Dialog
@@ -116,7 +138,14 @@ export function SyncPhoneContactsDialog({ open, onOpenChange }: Props) {
             ) : (
               <>
                 {conectados.length > 1 && (
-                  <Select value={numero ?? undefined} onValueChange={setEscolhido}>
+                  <Select
+                    value={numero ?? undefined}
+                    onValueChange={(v) => {
+                      // Outro número, outra agenda: o cursor do anterior não vale.
+                      setEscolhido(v);
+                      setRetomada(0);
+                    }}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder={t("Escolha o número")} />
                     </SelectTrigger>
@@ -189,17 +218,33 @@ export function SyncPhoneContactsDialog({ open, onOpenChange }: Props) {
             {resumo.truncado && (
               <p className="text-sm text-muted-foreground">
                 {t(
-                  "A sincronização bateu no teto de uma passada. Clique em Sincronizar de novo para continuar — o que já entrou não duplica.",
+                  "A sincronização bateu no teto de uma passada. Clique em Continuar de onde parou para seguir do próximo contato — o que já entrou não duplica.",
                 )}
               </p>
             )}
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={reset}>
-                {t("Sincronizar de novo")}
-              </Button>
-              <Button type="button" onClick={() => onOpenChange(false)}>
-                {t("Concluir")}
-              </Button>
+              {continuar ? (
+                <>
+                  <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+                    {t("Concluir")}
+                  </Button>
+                  <Button type="button" onClick={sincronizarAgora} disabled={sincronizar.isPending}>
+                    <ArrowsClockwise size={16} weight="bold" aria-hidden />
+                    <span>
+                      {sincronizar.isPending ? t("Sincronizando…") : t("Continuar de onde parou")}
+                    </span>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button type="button" variant="ghost" onClick={reset}>
+                    {t("Sincronizar de novo")}
+                  </Button>
+                  <Button type="button" onClick={() => onOpenChange(false)}>
+                    {t("Concluir")}
+                  </Button>
+                </>
+              )}
             </DialogFooter>
           </div>
         )}

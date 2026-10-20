@@ -8904,9 +8904,10 @@ export const DICIONARIO: Traducoes = {
   "Importa para o CRM os contatos salvos na agenda do aparelho conectado. Números que já estão no CRM não viram duplicata. Se o aparelho tiver mais contatos que o teto de uma sincronização, clique de novo para continuar de onde parou.": {
     es: "Importa al CRM los contactos guardados en la agenda del aparato conectado. Los números que ya están en el CRM no se duplican. Si el aparato tiene más contactos que el tope de una sincronización, haz clic de nuevo para continuar donde ibas.",
   },
-  "A sincronização bateu no teto de uma passada. Clique em Sincronizar de novo para continuar — o que já entrou não duplica.": {
-    es: "La sincronización llegó al tope de una pasada. Haz clic en Sincronizar de nuevo para continuar — lo que ya entró no se duplica.",
+  "A sincronização bateu no teto de uma passada. Clique em Continuar de onde parou para seguir do próximo contato — o que já entrou não duplica.": {
+    es: "La sincronización llegó al tope de una pasada. Haz clic en Continuar donde ibas para seguir desde el próximo contacto: lo que ya entró no se duplica.",
   },
+  "Continuar de onde parou": { es: "Continuar donde ibas" },
   "Isto traz todos os contatos salvos no celular, inclusive os pessoais. Só mande campanha a quem autorizou receber.": {
     es: "Esto trae todos los contactos guardados en el celular, incluidos los personales. Solo envía campañas a quien autorizó recibirlas.",
   },

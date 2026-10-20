@@ -30,16 +30,33 @@
  * vale mais que o da agenda do aparelho, e o vínculo de identidade WhatsApp
  * (`wa_identity`) a própria mensagem seguinte faz, pelo caminho de sempre.
  *
- * ─── Dois tetos, e o segundo é retomável ────────────────────────────────────
+ * ─── Dois tetos, e a leitura RETOMA de onde parou ───────────────────────────
  *
  * Ler a agenda tem teto (`TETO_DE_LEITURA`): a agenda do aparelho devolve
  * TAMBÉM quem nunca foi salvo (só conversou), então um número movido pode ter
  * milhares de linhas, e laço sem teto é como um webhook prende o runtime.
  * Importar tem teto próprio (`TETO_DE_IMPORTACOES`), na mesma régua do import
- * de planilha (500 linhas por vez). Passou do teto? `truncado: true` no
- * resumo, e CLICAR DE NOVO continua de onde parou — o que já entrou aparece
- * como "já existente", e a sincronização é idempotente por construção (é a RPC
- * que decide o reencontro).
+ * de planilha (500 linhas por vez).
+ *
+ * ─── O clique seguinte começa na LINHA CERTA, não no zero ───────────────────
+ *
+ * A leitura é um CURSOR: o resumo devolve `proximo_offset`, e o clique seguinte
+ * passa esse offset de volta ao serviço. Sem isso cada clique relia sempre as
+ * mesmas mil primeiras linhas e o corte caía no milésimo: numa agenda de 1.500
+ * salvos, quatro cliques importavam 500, 500, 0 e 0, todos com `truncado: true`
+ * — os 500 depois do milésimo NUNCA entravam (medido pelo mantenedor em
+ * 16/10, ponto 2 do CR do #2776).
+ *
+ * O cursor é a linha do primeiro candidato que NÃO foi gravado, e não o fim da
+ * leitura: como os dois tetos são diferentes (lê 1.000, grava 500), a leitura
+ * vai além do que a importação alcançou, e retomar do fim da leitura pularia
+ * esses 500 para sempre. Quando foi o teto de LEITURA que cortou (tudo o que
+ * foi lido já foi processado), o cursor é o fim da leitura; quando a página
+ * veio curta, é `null` — a agenda acabou e não há próximo clique.
+ *
+ * A ordenação fixa por `id` (`sortBy=id&sortOrder=asc`, no cliente) é o que faz
+ * esse offset valer de um clique para o outro — sem ela, "continuar de onde
+ * parou" seria uma aposta.
  */
 import { audit as auditReal } from "@/lib/audit";
 import type { ContatoDoAparelho } from "@/lib/channels";
@@ -59,8 +76,8 @@ export const TAMANHO_DA_PAGINA = 100;
  *
  * O `contacts/all` devolve a agenda E quem só conversou; sem este corte um
  * número com histórico grande prenderia a rota por tempo indeterminado. Quem
- * tem mais que isso continua no próximo clique (a ordenação fixa por `id`
- * mantém a paginação estável entre chamadas).
+ * tem mais que isso continua no próximo clique, que passa `proximo_offset`
+ * (a leitura é um cursor, nunca recomeça do zero — ver o cabeçalho).
  */
 export const TETO_DE_LEITURA = 1000;
 
@@ -94,6 +111,17 @@ export interface ResumoDaAgenda {
   erros: number;
   /** Bateu num teto (leitura ou importação) — clicar de novo continua. */
   truncado: boolean;
+  /**
+   * A LINHA da agenda do aparelho por onde o próximo clique começa, ou `null`
+   * quando não há mais nada a ler.
+   *
+   * Não é "o fim do que eu li": é a linha do primeiro candidato que ainda NÃO
+   * foi gravado. Com o teto de importação (500) menor que o de leitura (1.000),
+   * esses dois números divergem, e devolver o fim da leitura pularia os 500
+   * lidos-e-não-gravados para sempre. Quem chama (a rota, e a tela) só precisa
+   * passá-lo de volta no clique seguinte como `offset`.
+   */
+  proximo_offset: number | null;
 }
 
 /** O que a agenda devolveu e passou na régua — pronto para a RPC do webhook. */
@@ -110,6 +138,11 @@ interface Candidato {
    * `{{nome}}` das campanhas lê (decisão do mantenedor no #2439; doc 158).
    */
   agenda: string | null;
+  /**
+   * A linha da agenda do aparelho de onde este candidato veio. É o cursor: se a
+   * importação parar ANTES dele, o próximo clique recomeça exatamente aqui.
+   */
+  linha: number;
 }
 
 export interface AgendaDeps {
@@ -172,7 +205,8 @@ export function candidatoDaAgenda(c: ContatoDoAparelho): { telefone: string } | 
 }
 
 /**
- * Lê a agenda página a página e devolve os candidatos + o resumo da leitura.
+ * Lê a agenda página a página, A PARTIR de `inicio`, e devolve os candidatos +
+ * o resumo da leitura + o cursor do próximo clique.
  *
  * A ordenação fixa por `id` (`sortBy=id&sortOrder=asc`, no cliente) é o que
  * faz o offset avançar sem pular nem repetir — sem ela, "página seguinte" é uma
@@ -181,15 +215,16 @@ export function candidatoDaAgenda(c: ContatoDoAparelho): { telefone: string } | 
 async function lerAgenda(
   deps: AgendaDeps,
   session: string,
-): Promise<{ candidatos: Candidato[]; lidos: number; truncado: boolean }> {
+  inicio: number,
+): Promise<{ candidatos: Candidato[]; lidos: number; truncado: boolean; proximoOffset: number | null }> {
   const candidatos: Candidato[] = [];
   const vistos = new Set<string>();
   let lidos = 0;
-  let offset = 0;
+  let offset = inicio;
   for (;;) {
     const pagina = await deps.listarPagina(session, { limit: TAMANHO_DA_PAGINA, offset });
     lidos += pagina.length;
-    for (const c of pagina) {
+    for (const [i, c] of pagina.entries()) {
       const r = candidatoDaAgenda(c);
       if ("ignorado" in r) continue;
       const telefone = r.telefone;
@@ -203,13 +238,21 @@ async function lerAgenda(
         telefone,
         notify: c.pushname ?? null,
         agenda: nomeGravavel(c.name),
+        // A linha ABSOLUTA da agenda — é ela que o próximo clique passa como
+        // offset, e não a posição do candidato na lista desta passada (as
+        // linhas descartadas no meio mudam uma coisa da outra).
+        linha: offset + i,
       });
     }
-    // Página curta = o aparelho não tem mais. Página cheia no teto = tem mais,
-    // e é da próxima vez (ou do próximo clique).
-    if (pagina.length < TAMANHO_DA_PAGINA) return { candidatos, lidos, truncado: false };
+    // Página curta = o aparelho não tem mais. Não há próximo clique.
+    if (pagina.length < TAMANHO_DA_PAGINA) {
+      return { candidatos, lidos, truncado: false, proximoOffset: null };
+    }
     offset += TAMANHO_DA_PAGINA;
-    if (lidos >= TETO_DE_LEITURA) return { candidatos, lidos, truncado: true };
+    // Teto de leitura: tem mais, e a próxima passada começa AQUI (não no zero).
+    if (lidos >= TETO_DE_LEITURA) {
+      return { candidatos, lidos, truncado: true, proximoOffset: offset };
+    }
   }
 }
 
@@ -231,7 +274,14 @@ async function telefonesExistentesEmBlocos(
 
 export async function sincronizarAgendaDoCelular(
   deps: AgendaDeps,
-  e: { organizationId: string; session: string; actorUserId: string; requestId: string },
+  e: {
+    organizationId: string;
+    session: string;
+    actorUserId: string;
+    requestId: string;
+    /** De onde ESTE clique começa na agenda — o `proximo_offset` do anterior. */
+    offset?: number;
+  },
 ): Promise<ResumoDaAgenda> {
   const resumo: ResumoDaAgenda = {
     lidos: 0,
@@ -240,11 +290,15 @@ export async function sincronizarAgendaDoCelular(
     ignorados: 0,
     erros: 0,
     truncado: false,
+    proximo_offset: null,
   };
 
-  const leitura = await lerAgenda(deps, e.session);
+  // Offset vem de fora (body da rota): nem negativo, nem fracionário, nem NaN.
+  const inicio = Math.max(0, Math.trunc(e.offset ?? 0));
+  const leitura = await lerAgenda(deps, e.session, inicio);
   resumo.lidos = leitura.lidos;
   resumo.truncado = leitura.truncado;
+  resumo.proximo_offset = leitura.proximoOffset;
   // O que a leitura DESCARTOU (não salvo na agenda, grupo, sem WhatsApp…) —
   // contado aqui, porque o resumo sem este número parece "o aparelho só tinha
   // estes 12 contatos".
@@ -256,6 +310,9 @@ export async function sincronizarAgendaDoCelular(
   for (const candidato of leitura.candidatos) {
     if (resumo.importados >= TETO_DE_IMPORTACOES) {
       resumo.truncado = true;
+      // Retoma NA LINHA deste candidato: ele NÃO foi gravado, e o fim da
+      // leitura (que pode estar bem à frente) o pularia para sempre.
+      resumo.proximo_offset = candidato.linha;
       break;
     }
     const variantes = phoneLookupVariants(candidato.telefone);

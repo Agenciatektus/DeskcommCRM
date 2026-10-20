@@ -1,9 +1,13 @@
 /**
  * POST /api/v1/contacts/import/agenda — o "Sincronizar agenda do celular" (#2736).
  *
- * Body: `{ channel_session_id: uuid }` — o número pareado cuja agenda será
- * lida. A organização vem da sessão autenticada, nunca do body (mesma régua de
- * toda a família `/api/v1`).
+ * Body: `{ channel_session_id: uuid, offset?: number }` — o número pareado cuja
+ * agenda será lida, e de QUAL LINHA da agenda este clique começa. O `offset` é
+ * o `proximo_offset` que o clique anterior devolveu: a rota não inventa nem
+ * guarda cursor, ela só repassa (a agenda é lida em passadas de 1.000 linhas, e
+ * até 500 contatos criados por passada — sem o cursor o segundo clique relia as
+ * mesmas mil linhas e o milésimo virava o fim da agenda). A organização vem da
+ * sessão autenticada, nunca do body (mesma régua de toda a família `/api/v1`).
  *
  * A escrita de contato é a do webhook (`fn_upsert_wa_contact`, em
  * `lib/contacts/agenda-do-celular.ts`); o que esta rota decide é só quem PODE
@@ -41,7 +45,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-const corpoSchema = z.object({ channel_session_id: z.string().uuid() });
+const corpoSchema = z.object({
+  channel_session_id: z.string().uuid(),
+  /**
+   * O `proximo_offset` do clique anterior. Ausente = primeiro clique (zero).
+   * Teto alto de propósito: o offset é uma linha de uma agenda de celular, não
+   * uma página de listagem — quem pedir 10^9 recebe a página vazia e o resumo
+   * fecha em `truncado: false`, sem varredura nenhuma.
+   */
+  offset: z.number().int().min(0).max(100_000_000).default(0),
+});
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supportDenied = await requireSupportWrite();
@@ -122,6 +135,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         session: sessionRef,
         actorUserId: authz.user.id,
         requestId,
+        // O cursor do clique anterior: a rota só repassa, quem lê é o serviço.
+        offset: corpo.data.offset,
       },
     );
     return ok(resumo, { requestId });

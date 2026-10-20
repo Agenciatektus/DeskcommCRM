@@ -86,6 +86,7 @@ const RESUMO = {
   ignorados: 10,
   erros: 0,
   truncado: false,
+  proximo_offset: null,
 };
 
 beforeEach(() => {
@@ -202,6 +203,36 @@ describe("POST /api/v1/contacts/import/agenda", () => {
     });
     const body = (await r.json()) as { data: typeof RESUMO };
     expect(body.data).toEqual(RESUMO);
+  });
+
+  it("o offset do clique anterior chega ao serviço; sem ele, o clique começa do zero", async () => {
+    await POST(requisicao({ channel_session_id: CANAL, offset: 500 }));
+    expect(vi.mocked(sincronizarAgendaDoCelular).mock.calls[0]![1]).toMatchObject({ offset: 500 });
+
+    vi.mocked(sincronizarAgendaDoCelular).mockClear();
+    await POST(requisicao({ channel_session_id: CANAL }));
+    expect(vi.mocked(sincronizarAgendaDoCelular).mock.calls[0]![1]).toMatchObject({ offset: 0 });
+  });
+
+  it("offset negativo ou fracionário é 422 — o cursor vem de fora e não vira loop", async () => {
+    for (const offset of [-1, 1.5, "500"]) {
+      const r = await POST(requisicao({ channel_session_id: CANAL, offset }));
+      expect(r.status).toBe(422);
+      const body = (await r.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("validation_failed");
+    }
+    expect(sincronizarAgendaDoCelular).not.toHaveBeenCalled();
+  });
+
+  it("o resumo com cursor vai inteiro para a tela — é ele que ela devolve no próximo clique", async () => {
+    vi.mocked(sincronizarAgendaDoCelular).mockResolvedValue({
+      ...RESUMO,
+      truncado: true,
+      proximo_offset: 1000,
+    } as never);
+    const r = await POST(requisicao({ channel_session_id: CANAL }));
+    const body = (await r.json()) as { data: { truncado: boolean; proximo_offset: number | null } };
+    expect(body.data).toMatchObject({ truncado: true, proximo_offset: 1000 });
   });
 
   it("falha de transporte vira 502 com a frase da conexão — sem status do provedor", async () => {

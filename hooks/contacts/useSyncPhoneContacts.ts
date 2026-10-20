@@ -19,16 +19,28 @@ export interface ResumoDaAgenda {
   ignorados: number;
   erros: number;
   truncado: boolean;
+  /**
+   * A linha da agenda por onde o PRÓXIMO clique começa, ou `null` quando acabou.
+   * É o cursor que a tela devolve no clique seguinte — sem ele cada clique
+   * recomeça do zero e o que passa do milésimo contato nunca entra.
+   */
+  proximo_offset: number | null;
+}
+
+export interface PedidoDeSync {
+  channelSessionId: string;
+  /** O `proximo_offset` do clique anterior; ausente = primeiro clique. */
+  offset?: number;
 }
 
 export function useSyncPhoneContacts() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (channelSessionId: string): Promise<ResumoDaAgenda> => {
+    mutationFn: async ({ channelSessionId, offset }: PedidoDeSync): Promise<ResumoDaAgenda> => {
       const res = await fetch("/api/v1/contacts/import/agenda", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Idempotency-Key": randomId() },
-        body: JSON.stringify({ channel_session_id: channelSessionId }),
+        body: JSON.stringify({ channel_session_id: channelSessionId, offset: offset ?? 0 }),
         credentials: "same-origin",
       });
       const text = await res.text();
