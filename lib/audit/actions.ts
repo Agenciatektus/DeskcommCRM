@@ -57,6 +57,9 @@ export const AUDIT_ACTIONS = [
   "lead.imported",
   "contact.created",
   "contact.updated",
+  // A varredura que copia o nome salvo na agenda do celular para a ficha.
+  // Uma linha por empresa, em cada rodada que preencheu alguém dela — não uma por contato.
+  "contact.address_book_name_filled",
   "contacts.imported",
   "contact.anonymized",
   "contact.merge_pending",
@@ -1194,6 +1197,12 @@ export const AUDIT_ACTIONS = [
   // interruptores, a antecedência e o opt-in de WhatsApp). O número NÃO entra:
   // é dado de contato, e o audit é trilha legível por quem administra.
   "user.task_reminder_prefs_updated",
+  // O admin mudou o que os avisos do celular mostram com a tela bloqueada
+  // (`settings.notificacoes`); metadata com o valor anterior e o novo.
+  "notificacoes.tela_bloqueada_alterada",
+  // Inscrição de push removida no servidor: desligar os alertas, sair, ou
+  // "sair de todos os dispositivos" (metadata.escopo diz qual).
+  "notification_prefs.push_subscription_removed",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */
