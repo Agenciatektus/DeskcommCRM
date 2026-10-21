@@ -567,7 +567,8 @@ export async function mfaEmDivida(): Promise<boolean> {
  */
 export async function exigirProvaDeMfa(): Promise<void> {
   if (!(await mfaEmDivida())) return;
-  // `x-pathname` é gravado pelo `proxy.ts` em toda requisição autenticada.
+  // `x-pathname` vem do `proxy.ts`, gravado ANTES do `NextResponse.next` — só o
+  // que existe ali chega aqui (tests/unit/proxy-encaminha-o-caminho.test.ts).
   const caminho = (await headers()).get("x-pathname") ?? "/app";
   redirect(`/login/mfa?next=${encodeURIComponent(caminho)}`);
 }

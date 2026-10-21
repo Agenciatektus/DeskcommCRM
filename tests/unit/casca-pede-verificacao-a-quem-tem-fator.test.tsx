@@ -41,13 +41,25 @@ vi.mock("@/lib/auth/server", async (importOriginal) => {
     requiresMfa: async () => h.politica,
   };
 });
+// Os cabeçalhos são os que o `proxy.ts` REAL entrega para a URL do caso — o
+// `next` do desafio sai do que a página de fato recebe, não de um valor posto à mão.
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined }),
-  headers: async () => new Headers({ "x-pathname": h.caminho }),
+  headers: async () => {
+    const { cabecalhosQueOProxyEntrega } = await import("./helpers/cabecalhos-do-proxy");
+    return cabecalhosQueOProxyEntrega(`https://crm.exemplo${h.caminho}`);
+  },
 }));
+vi.mock("@supabase/ssr", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@supabase/ssr")>()),
+  createServerClient: () => ({
+    auth: { getUser: async () => ({ data: { user: { id: U } }, error: null }) },
+  }),
+}));
+// O `digest` é o que o runtime do Next lê para redirecionar (o formato do `redirect()` real).
 vi.mock("next/navigation", () => ({
   redirect: (d: string) => {
-    throw new Error(`REDIRECT:${d}`);
+    throw Object.assign(new Error(`REDIRECT:${d}`), { digest: `NEXT_REDIRECT;replace;${d};307;` });
   },
 }));
 vi.mock("@/lib/channels/health", () => ({ listarConexoesCaidas: async () => [] }));
@@ -219,6 +231,8 @@ describe("/onboarding: a mesma regra", () => {
 
 describe("/admin: a mesma regra, com a política da plataforma desligada", () => {
   const linha = { user_id: U, scope: "full", mfa_required: false, revoked_at: null };
+  /** Na tela, o redirect ao desafio (o `digest`); na rota, a recusa `mfa_required`. */
+  const desafio = { code: "mfa_required", digest: "NEXT_REDIRECT;replace;/login/mfa?next=/admin;307;" };
   async function guarda() {
     const { requirePlatformAdmin } = await import("@/lib/auth/requirePlatformAdmin");
     return requirePlatformAdmin();
@@ -226,7 +240,7 @@ describe("/admin: a mesma regra, com a política da plataforma desligada", () =>
 
   it("fator verificado + sessão aal1 → desafio", async () => {
     sessao([{ status: "verified" }], "aal1", linha);
-    await expect(guarda()).rejects.toThrow("REDIRECT:/login/mfa?next=/admin");
+    await expect(guarda()).rejects.toMatchObject(desafio);
   });
 
   it("controle: sem fator → entra", async () => {
@@ -246,6 +260,6 @@ describe("/admin: a mesma regra, com a política da plataforma desligada", () =>
 
   it("controle: política exige + aal1 → desafio, como antes", async () => {
     sessao([], "aal1", { ...linha, mfa_required: true });
-    await expect(guarda()).rejects.toThrow("REDIRECT:/login/mfa?next=/admin");
+    await expect(guarda()).rejects.toMatchObject(desafio);
   });
 });

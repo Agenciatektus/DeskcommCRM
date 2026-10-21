@@ -9,7 +9,8 @@
  * Redirects:
  *  - no user        → /login?next=/admin
  *  - no row         → /admin/forbidden
- *  - aal1 + (required OU fator cadastrado) → /login/mfa?next=/admin
+ *  - aal1 + (required OU fator cadastrado) → /login/mfa?next=/admin numa tela;
+ *    numa rota, 403 `mfa_required` (ver `desafioDeMfa`)
  *
  * The middleware already does an early `fn_is_platform_admin` RPC check;
  * this helper performs the authoritative server-side validation inside the
@@ -63,9 +64,7 @@ export async function requirePlatformAdmin(): Promise<PlatformAdminContext> {
   const temFator = !!user.factors?.some((f) => f.factor_type === "totp" && f.status === "verified");
   if (paRow.mfa_required || temFator) {
     const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aalData?.currentLevel !== "aal2") {
-      redirect("/login/mfa?next=/admin");
-    }
+    if (aalData?.currentLevel !== "aal2") desafioDeMfa();
   }
 
   return {
@@ -76,6 +75,24 @@ export async function requirePlatformAdmin(): Promise<PlatformAdminContext> {
       mfa_required: paRow.mfa_required,
     },
   };
+}
+
+/**
+ * A sessão que não provou o fator: a TELA vai ao desafio e a ROTA responde 403
+ * `mfa_required`, com um erro só. O `digest` copiado do `redirect()` é o que o
+ * runtime do Next lê para redirecionar o layout de `/admin`; a rota, que captura
+ * o erro, o lê como a recusa nomeada (`falhaDaEscritaDePlatformAdmin`), e a
+ * server action, como `{ ok: false, error: "mfa_required" }`.
+ */
+function desafioDeMfa(): never {
+  try {
+    redirect("/login/mfa?next=/admin");
+  } catch (redirecionamento) {
+    const recusa = new EscritaDePlatformAdminNegada("mfa_required");
+    throw Object.assign(recusa, {
+      digest: redirecionamento instanceof Error && "digest" in redirecionamento ? redirecionamento.digest : undefined,
+    });
+  }
 }
 
 // A classe mora no módulo sem `next/*` para o formulário ler a mesma frase.
@@ -105,9 +122,10 @@ export async function requirePlatformAdminEscrita(): Promise<PlatformAdminContex
 }
 
 /**
- * Resposta de rota para o que `requirePlatformAdminEscrita` lançou. A recusa
- * nomeada vira o seu código; o resto (redirect de quem não é platform admin,
- * sessão ilegível) vira o 403 `forbidden` que as rotas de admin já davam.
+ * Resposta de rota para o que `requirePlatformAdmin` ou `requirePlatformAdminEscrita`
+ * lançou — leitura e escrita. A recusa nomeada vira o seu código (`mfa_required`,
+ * `forbidden_scope`); o resto (redirect de quem não é platform admin, sessão
+ * ilegível) vira o 403 `forbidden` que as rotas de admin já davam.
  */
 export function falhaDaEscritaDePlatformAdmin(
   err: unknown,
