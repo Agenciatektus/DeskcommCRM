@@ -39,10 +39,10 @@ afterEach(() => {
 
 describe("deriveVideoText", () => {
   it("as duas chamadas do ffmpeg passam a lista de formatos inteira antes do -i", async () => {
-    const d = deps();
-    await deriveVideoText(Buffer.from([9]), d);
-    expect(d.runFfmpeg).toHaveBeenCalledTimes(2);
-    for (const [args] of d.runFfmpeg.mock.calls as Array<[string[]]>) {
+    const runFfmpeg = vi.fn(async (_args: string[], _cwd: string) => undefined);
+    await deriveVideoText(Buffer.from([9]), deps({ runFfmpeg }));
+    expect(runFfmpeg).toHaveBeenCalledTimes(2);
+    for (const [args] of runFfmpeg.mock.calls) {
       const antes = args.slice(0, args.indexOf("-i"));
       expect(args.indexOf("-i")).toBeGreaterThan(0);
       for (let k = 0; k < ENTRADA_DE_VIDEO.length; k += 2) {
