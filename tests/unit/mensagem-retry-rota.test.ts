@@ -133,7 +133,7 @@ describe("POST /api/v1/messages/{id}/retry", () => {
     ]));
     expect(trava!.payload).toMatchObject({ status: "queued", error_code: null, error_message: null, external_id: null, metadata: { outra: 1 } });
     expect(trava!.payload!.metadata).not.toHaveProperty("queued_reason");
-    expect(typeof trava!.payload!.sent_at).toBe("string");
+    expect(trava!.payload, "a trava mudou a hora antes de saber se a mensagem sai").not.toHaveProperty("sent_at");
   });
 
   it("chama o handler com internalMessageId e o input montado da linha", async () => {
@@ -156,7 +156,7 @@ describe("POST /api/v1/messages/{id}/retry", () => {
     const [, volta] = updates();
     expect(volta!.payload).toEqual({
       status: "failed", external_id: "id-do-canal-velho", error_code: "channel_disabled", error_message: "Canal desativado",
-      metadata: { queued_reason: "velho", outra: 1 }, sent_at: "2026-10-21T10:00:00.000Z",
+      metadata: { queued_reason: "velho", outra: 1 },
     });
     expect(volta!.eqs).toEqual(expect.arrayContaining([["status", "queued"], ["updated_at", "2026-10-21T12:00:01.000001+00:00"]]));
     expect(state.audit).not.toHaveBeenCalled();
@@ -176,8 +176,27 @@ describe("POST /api/v1/messages/{id}/retry", () => {
     await POST(req({ confirmado: true }), ctx());
     expect(state.audit).toHaveBeenCalledWith(expect.objectContaining({
       action: "message.retried", organizationId: "org-1", resourceId: id,
-      metadata: expect.objectContaining({ status_anterior: "failed", error_code_anterior: "channel_disabled", confirmado: true }),
+      metadata: expect.objectContaining({
+        status_anterior: "failed", error_code_anterior: "channel_disabled", sent_at_anterior: "2026-10-21T10:00:00.000Z", confirmado: true,
+      }),
     }));
+  });
+
+  it("envio aceito vai para o fim do fio: a hora muda só depois que o canal aceitou", async () => {
+    state.handler.mockImplementation(async () => ({ ...state.linha, status: "sent" }));
+    const res = await POST(req(), ctx());
+    const corpo = await res.json();
+    const [, move] = updates();
+    expect(move!.payload).toEqual({ sent_at: expect.any(String) });
+    expect(move!.eqs).toEqual(expect.arrayContaining([["id", id], ["organization_id", "org-1"]]));
+    expect(corpo.data.sent_at).toBe(move!.payload!.sent_at);
+    expect(corpo.data.sent_at).not.toBe("2026-10-21T10:00:00.000Z");
+  });
+
+  it("o que ficou na fila de novo mantém a hora e o lugar", async () => {
+    const res = await POST(req(), ctx());
+    expect((await res.json()).data.sent_at).toBe("2026-10-21T10:00:00.000Z");
+    expect(updates(), "só a trava; nenhuma escrita de hora").toHaveLength(1);
   });
 
   it("filtra organization_id na leitura da mensagem, na da conversa e na trava", async () => {

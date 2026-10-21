@@ -3634,7 +3634,7 @@ Spec: `tests/e2e/reenvio-pelo-celular.spec.ts` (parte 5), 390x844 com toque, log
 | # | Caso | Expectativa | Resultado |
 |---|------|-------------|-----------|
 | J50.1 `[P0]` | A bolha que falhou diz o motivo | falha produzida pelo envio do composer em canal desativado; «Este número está desativado. Reative em Conexões para enviar.» à vista, sem código do canal nem endereço; «Tentar de novo» ≥ 44×44 e dentro dos 390px; a setinha de opções pega o dedo 10px além do desenho | a medir (CI) + UNIT `MessageBubble.test` |
-| J50.2 `[P0]` | Tentar de novo muda a MESMA bolha | canal reativado em `STARTING`; o toque leva a bolha a «Aguardando conexão», sem «Falhou»; a contagem de bolhas não muda; a bolha vai para depois da mensagem que o cliente mandou depois da falha | a medir (CI) + UNIT `mensagem-retry-rota` |
+| J50.2 `[P0]` | Tentar de novo muda a MESMA bolha | canal reativado em `STARTING`; o toque leva a bolha a «Aguardando conexão», sem «Falhou»; a contagem de bolhas não muda; como nada saiu, a bolha fica antes da mensagem que o cliente mandou depois da falha (só o envio aceito vai para o fim do fio) | a medir (CI) + UNIT `mensagem-retry-rota` |
 | J50.3 | Pode ter chegado: pede confirmação | `sending` posto à mão com 10 min, `failed/send_timeout` gravado pelo cron `recover-stuck-messages`; o toque abre o aviso «Confira no WhatsApp do cliente…» dentro da tela; «Cancelar» mantém «Falhou»; «Enviar de novo» reenvia | a medir (CI) + UNIT |
 | J50.4 | Mensagem da IA que falhou | motivo à vista, sem botão (o motor da IA tem quem tente de novo) | a medir (CI) + UNIT `reenvio.test` |
 | J50.5 | Dois toques ao mesmo tempo | a trava pelo `updated_at` deixa passar um só (409 `reenvio_em_curso` no outro) | UNIT `mensagem-retry-rota` |
@@ -3642,8 +3642,8 @@ Spec: `tests/e2e/reenvio-pelo-celular.spec.ts` (parte 5), 390x844 com toque, log
 | J50.7 | O mesmo texto depois de erro de rede | o composer reaproveita a chave de idempotência; o servidor devolve o recibo em vez de mandar de novo | UNIT `use-send-message-idempotencia` |
 
 **Laço de retorno (sistema vivo):** falhar de novo devolve a bolha a «Falhou» com o
-motivo novo; cada tentativa fica no audit (`message.retried`, com o status e o
-código anteriores e se houve confirmação).
+motivo novo; cada tentativa fica no audit (`message.retried`, com o status, o
+código e a hora anteriores e se houve confirmação).
 
 **NÃO COBERTO, declarado:** que o canal de verdade entrega o reenvio (o CI não tem
 WhatsApp; o caminho termina em «Aguardando conexão»); o toque num iPhone e num

@@ -16,7 +16,7 @@ import { credenciaisSupabaseDeTeste } from "../../scripts/lib/env-de-teste";
  *   C-1  a bolha que falhou diz o motivo em frase legível (sem código do canal,
  *        sem endereço) e "Tentar de novo" tem 44px e cabe na tela;
  *   C-2  tocar em "Tentar de novo" muda a MESMA bolha (a contagem não muda) para
- *        "Aguardando conexão", e ela vai para o fim do fio;
+ *        "Aguardando conexão"; como nada saiu, ela mantém o lugar no fio;
  *   C-3  no caso em que a mensagem pode ter chegado, o toque abre a confirmação;
  *        "Cancelar" mantém "Falhou" e "Enviar de novo" reenvia;
  *   C-4  mensagem da IA que falhou mostra o motivo e não tem botão.
@@ -204,10 +204,10 @@ test.describe("reenvio pelo celular", () => {
     await page.screenshot({ path: path.join(EVIDENCE, "c1-bolha-que-falhou.png") });
   });
 
-  test("C-2 tentar de novo muda a mesma bolha e a leva para o fim do fio", async ({ page }) => {
+  test("C-2 tentar de novo muda a mesma bolha, que fica no lugar enquanto nada sai", async ({ page }) => {
     await entrar(page);
     await abrir(page);
-    // O cliente escreveu depois da falha: a mensagem reenviada tem de chegar DEPOIS dele.
+    // O cliente escreveu depois da falha: serve de régua para o lugar da bolha.
     const respostaDoCliente = `Alguma novidade? ${SUFIXO}`;
     await insere("messages", {
       organization_id: orgId, contact_id: contato, conversation_id: conversa, channel_session_id: canal,
@@ -226,10 +226,12 @@ test.describe("reenvio pelo celular", () => {
     await expect(b.getByText("Aguardando conexão")).toBeVisible({ timeout: 30_000 });
     await expect(b.getByText("Falhou")).toHaveCount(0);
     expect(await bolhas(page).count(), "nasceu uma segunda bolha em vez de mudar a mesma").toBe(antes);
-    await expect.poll(async () => (await bolhas(page).last().innerText()).includes(TEXTO_HUMANO), {
-      message: "a mensagem reenviada não foi para o fim do fio",
-      timeout: 15_000,
-    }).toBe(true);
+    // Nada saiu (o canal ainda sobe): a bolha mantém a hora e o lugar, antes da
+    // mensagem que o cliente mandou depois. Só o envio aceito vai para o fim.
+    const ordem = await bolhas(page).allInnerTexts();
+    const minha = ordem.findIndex((txt) => txt.includes(TEXTO_HUMANO));
+    const doCliente = ordem.findIndex((txt) => txt.includes(respostaDoCliente));
+    expect(minha, `a bolha que não saiu mudou de lugar: ${minha} vs ${doCliente}`).toBeLessThan(doCliente);
 
     await page.screenshot({ path: path.join(EVIDENCE, "c2-aguardando-conexao.png") });
   });

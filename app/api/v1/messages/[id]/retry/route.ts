@@ -113,8 +113,6 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       // aceito grava o id novo; a recusa devolve o antigo.
       external_id: null,
       metadata: metadataSemMotivo,
-      // No WhatsApp do cliente a mensagem chega agora; no fio, ela vai para o fim.
-      sent_at: new Date().toISOString(),
     })
     .eq("id", id).eq("organization_id", orgId)
     .eq("status", lida.status).eq("updated_at", lida.updated_at)
@@ -155,12 +153,22 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
         error_code: lida.error_code,
         error_message: lida.error_message,
         metadata: lida.metadata,
-        sent_at: lida.sent_at,
       })
       .eq("id", id).eq("organization_id", orgId)
       .eq("status", "queued").eq("updated_at", travada.updated_at);
     if (!(err instanceof ApiError)) throw err;
     return fail(err.code, err.message, err.status, { requestId });
+  }
+
+  // Só o envio ACEITO vai para o fim do fio: no WhatsApp do cliente ele chega
+  // agora. O que ficou na fila ou falhou de novo não saiu, e mantém a hora e o
+  // lugar de antes — senão cada toque com o canal caído mudaria a hora exibida.
+  if (message.status !== "queued" && message.status !== "failed") {
+    const agora = new Date().toISOString();
+    const { error: erroAoMover } = await supabase.from("messages")
+      .update({ sent_at: agora })
+      .eq("id", id).eq("organization_id", orgId);
+    if (!erroAoMover) message = { ...message, sent_at: agora };
   }
 
   await audit({
@@ -174,6 +182,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       message_id: id,
       status_anterior: lida.status,
       error_code_anterior: lida.error_code,
+      sent_at_anterior: lida.sent_at,
       confirmado,
       status: message.status,
     },
