@@ -45,6 +45,7 @@ import {
   lerTelefoneDeFichaVazia,
   registrarTelefoneAplicadoNaTimeline,
 } from "@/lib/contacts/telefone-aplicado";
+import { PHONE_REGEX } from "@/lib/schemas/contacts";
 import { normalizePhoneBR } from "@/lib/webhooks/inbound";
 
 /**
@@ -153,7 +154,7 @@ export function valorAceitavel(campo: CampoProponivel, valor: string): boolean {
  */
 export function telefoneE164(valor: string): string | null {
   const e164 = normalizePhoneBR(valor);
-  if (!e164 || !/^\+\d{8,15}$/.test(e164)) return null;
+  if (!e164 || !PHONE_REGEX.test(e164)) return null;
   return e164;
 }
 
