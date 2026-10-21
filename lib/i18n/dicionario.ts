@@ -10385,6 +10385,9 @@ export const DICIONARIO: Traducoes = {
   },
   "Áudio do recurso": { es: "Audio del recurso" },
   "O arquivo precisa ser de áudio.": { es: "El archivo debe ser de audio." },
+  "O áudio precisa ser OGG, MP3, AAC, AMR ou WAV.": {
+    es: "El audio debe ser OGG, MP3, AAC, AMR o WAV.",
+  },
   "O áudio precisa ter até 16 MB.": { es: "El audio no debe superar los 16 MB." },
   "Cada resposta rápida tem no máximo 5 mídias.": {
     es: "Cada respuesta rápida admite un máximo de 5 medios.",

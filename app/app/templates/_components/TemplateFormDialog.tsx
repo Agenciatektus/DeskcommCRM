@@ -189,6 +189,13 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
       toast.error(t("O arquivo precisa ser de áudio."));
       return;
     }
+    // M4A (o padrão do gravador do iPhone e do Mac) e WebM a rota recusa com
+    // 415. Recusar AQUI, antes de o template existir, é o que impede a criação
+    // de deixar uma resposta rápida sem texto e sem áudio.
+    if (/^audio\/(mp4|x-m4a|m4a|webm)$/.test(file.type)) {
+      toast.error(t("O áudio precisa ser OGG, MP3, AAC, AMR ou WAV."));
+      return;
+    }
     if (file.size > TAMANHO_MAXIMO_DO_AUDIO) {
       toast.error(t("O áudio precisa ter até 16 MB."));
       return;
@@ -227,6 +234,27 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
         const sai = conhecidas.filter(
           (m) => !listaNova.some((k) => k.storage_path === m.storage_path),
         );
+        // TROCA de áudio: o novo sobe ANTES do PATCH que tira o antigo. Na ordem
+        // inversa, um upload recusado deixava o recurso sem o áudio que
+        // funcionava. A ordem remover-antes (#2526) só é necessária quando o
+        // teto de 5 morderia, o que num recurso de áudio (1 + 1) não acontece.
+        if (tipo === "audio" && arquivo && conhecidas.length < MAXIMO_DE_MIDIAS) {
+          const lista = await upload.mutateAsync({ templateId: template.id, file: arquivo });
+          const nova = lista.find((m) => !conhecidas.some((k) => k.storage_path === m.storage_path));
+          await update.mutateAsync({
+            id: template.id,
+            title,
+            body: corpo,
+            shortcut: shortcut.trim() || null,
+            ...(nova ? { midias: [nova] } : {}),
+          });
+          setGravadas([]);
+          setRemovidas([]);
+          setArquivo(null);
+          toast.success(t("Resposta rápida atualizada."));
+          onOpenChange(false);
+          return;
+        }
         await update.mutateAsync({
           id: template.id,
           title,
@@ -265,6 +293,15 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
           for (const file of subir) {
             await upload.mutateAsync({ templateId: criado.data.id, file });
           }
+        } catch (erro) {
+          // Recurso de áudio sem o áudio não tem conteúdo nenhum: ficaria na
+          // barra do Inbox como um botão vazio. Desfaz a criação.
+          if (tipo === "audio") {
+            await apiClient
+              .delete(`/api/v1/message-templates/${criado.data.id}`)
+              .catch(showApiError);
+          }
+          throw erro;
         } finally {
           qc.invalidateQueries({ queryKey: TEMPLATES_KEY });
           onOpenChange(false);
@@ -338,7 +375,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
               <Input
                 id="tpl-audio"
                 type="file"
-                accept="audio/*"
+                accept=".ogg,.opus,.mp3,.aac,.amr,.wav"
                 onChange={(e) => escolherAudio(e.target.files)}
                 required={!audioAtual}
               />
