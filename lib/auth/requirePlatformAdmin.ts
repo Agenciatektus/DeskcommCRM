@@ -9,7 +9,7 @@
  * Redirects:
  *  - no user        → /login?next=/admin
  *  - no row         → /admin/forbidden
- *  - aal1 + required → /login/mfa?next=/admin
+ *  - aal1 + (required OU fator cadastrado) → /login/mfa?next=/admin
  *
  * The middleware already does an early `fn_is_platform_admin` RPC check;
  * this helper performs the authoritative server-side validation inside the
@@ -57,7 +57,11 @@ export async function requirePlatformAdmin(): Promise<PlatformAdminContext> {
     redirect("/admin/forbidden");
   }
 
-  if (paRow.mfa_required) {
+  // Quem TEM fator prova nesta sessão, exigido ou não pela política — a mesma
+  // regra de `mfaEmDivida`. Os fatores vêm do `getUser()` acima, já validado no
+  // servidor: nenhuma leitura a mais.
+  const temFator = !!user.factors?.some((f) => f.factor_type === "totp" && f.status === "verified");
+  if (paRow.mfa_required || temFator) {
     const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (aalData?.currentLevel !== "aal2") {
       redirect("/login/mfa?next=/admin");
