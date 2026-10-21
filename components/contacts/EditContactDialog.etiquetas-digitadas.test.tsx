@@ -188,3 +188,43 @@ describe("EditContactDialog · etiquetas digitadas sem Enter (issue #2732)", () 
     expect(corpoDoPatch().tags).toEqual(["são paulo"]);
   });
 });
+
+function montar(contact: Contact, open: boolean) {
+  return (
+    <QueryClientProvider client={qcFixo}>
+      <EditContactDialog contact={contact} open={open} onOpenChange={vi.fn()} vocabulario={["vip"]} />
+    </QueryClientProvider>
+  );
+}
+const qcFixo = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+
+describe("EditContactDialog · o pendente não sobrevive a fechar o diálogo (ficha, #2831)", () => {
+  it("digitar, CANCELAR, reabrir e salvar NÃO grava o texto cancelado", async () => {
+    const user = userEvent.setup();
+    const r = render(montar(CONTATO, true));
+    await user.type(screen.getByLabelText("Adicionar etiqueta"), "cliente cancelado");
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    r.rerender(montar(CONTATO, false));
+    r.rerender(montar(CONTATO, true));
+    expect(screen.getByLabelText("Adicionar etiqueta")).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(buscar).toHaveBeenCalled());
+    expect(corpoDoPatch().tags).toEqual([]);
+  });
+
+  it("salvar sem Enter, reabrir, REMOVER o chip e salvar remove a etiqueta", async () => {
+    const user = userEvent.setup();
+    const r = render(montar(CONTATO, true));
+    await user.type(screen.getByLabelText("Adicionar etiqueta"), "cliente diamante");
+    await user.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(buscar).toHaveBeenCalledTimes(1));
+    const salvo = { ...CONTATO, tags: ["cliente diamante"] };
+    r.rerender(montar(salvo, false));
+    r.rerender(montar(salvo, true));
+    await user.click(screen.getByLabelText("Remover etiqueta cliente diamante"));
+    await user.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(buscar).toHaveBeenCalledTimes(2));
+    const init = buscar.mock.calls[1]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body)).tags).toEqual([]);
+  });
+});

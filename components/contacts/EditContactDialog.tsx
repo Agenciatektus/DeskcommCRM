@@ -92,6 +92,14 @@ export function EditContactDialog({
     }
   }, [open, contact, form]);
 
+  // Na ficha o diálogo fica MONTADO entre aberturas, e o pendente também:
+  // fechar por qualquer caminho o descarta, senão o texto de uma edição
+  // cancelada entra no próximo Salvar, e um chip removido volta sozinho.
+  function mudarAbertura(v: boolean) {
+    if (!v) setEtiquetaPendente(null);
+    onOpenChange(v);
+  }
+
   async function onSubmit(values: FormShape) {
     setServerError(null);
     // O texto que ficou NO CAMPO sem Enter não pode sumir ao salvar (defeito
@@ -130,14 +138,14 @@ export function EditContactDialog({
     try {
       await update.mutateAsync(parsed.data as ContactPatch);
       toast.success(t("Contato atualizado"));
-      onOpenChange(false);
+      mudarAbertura(false);
     } catch {
       // hook handles toast
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={mudarAbertura}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("Editar contato")}</DialogTitle>
@@ -193,7 +201,7 @@ export function EditContactDialog({
             <Button
               type="button"
               variant="ghost"
-              onClick={() => onOpenChange(false)}
+              onClick={() => mudarAbertura(false)}
               disabled={update.isPending}
             >
               {t("Cancelar")}
