@@ -400,3 +400,34 @@ describe("MessageBubble — remetente de grupo", () => {
     expect(screen.queryByText("Maria · +5521999990000")).toBeNull();
   });
 });
+
+/**
+ * A edição segue a mesma lei do composer no celular (F2): a tecla de retorno
+ * do teclado virtual quebra linha, e quem salva é o botão. Ctrl/Cmd+Enter
+ * salva sempre.
+ */
+describe("MessageBubble — editar pelo toque (F2)", () => {
+  it("ponteiro grosso: Enter quebra linha; Ctrl+Enter salva", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      (q: string) => ({ matches: q.includes("coarse"), media: q }) as MediaQueryList,
+    );
+    try {
+      const user = userEvent.setup();
+      const onEditar = vi.fn(async () => undefined);
+      render(<MessageBubble message={msg({ external_id: "ABC", sent_at: new Date().toISOString() })}
+        onEditar={onEditar} />);
+      await user.click(screen.getByRole("button", { name: "Opções da mensagem" }));
+      await user.click(await screen.findByRole("menuitem", { name: "Editar mensagem" }));
+      const campo = screen.getByRole("textbox", { name: "Editar mensagem" });
+      expect(campo.className).toContain("text-base");
+      fireEvent.change(campo, { target: { value: "linha" } });
+      expect(fireEvent.keyDown(campo, { key: "Enter" })).toBe(true);
+      expect(onEditar).not.toHaveBeenCalled();
+      fireEvent.keyDown(campo, { key: "Enter", ctrlKey: true });
+      await waitFor(() => expect(onEditar).toHaveBeenCalledOnce());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
