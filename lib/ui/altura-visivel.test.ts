@@ -83,6 +83,12 @@ describe("useAlturaVisivel", () => {
     expect(hook.result.current).toBe(false);
   });
 
+  it("zoom de 1,5 (pinça) sem teclado não é teclado: a altura em px de CSS cai a 563, mas na tela segue 844", () => {
+    const { hook } = montar();
+    act(() => vv.mudar({ scale: 1.5, width: 390 / 1.5, height: 844 / 1.5 }));
+    expect(hook.result.current).toBe(false);
+  });
+
   it("zoom de 1,15 COM teclado é teclado aberto (o foco num campo de 14px no iPhone)", () => {
     const { hook } = montar();
     act(() => vv.mudar({ scale: 1.15, width: 390 / 1.15, height: 500 / 1.15, offsetTop: 120 }));
