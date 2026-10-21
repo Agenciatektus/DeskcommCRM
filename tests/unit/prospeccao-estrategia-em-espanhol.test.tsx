@@ -21,6 +21,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DICIONARIO, traduzir } from "@/lib/i18n/dicionario";
 import {
   blocoDeEstrategiaParaAgente,
+  instrucaoDeAbordagemFria,
   montarDadosDeAbordagem,
   montarEstrategia,
   pontuarCandidato,
@@ -188,6 +189,19 @@ describe("sem tradutor, o texto é o de antes (o que o agente recebe)", () => {
     const bloco = blocoDeEstrategiaParaAgente(montarEstrategia({ ...base, classe: "fora-do-ar" }));
     expect(bloco).toContain("Cenário: Site fora do ar");
     expect(bloco).toContain("Ângulo: O site NÃO ABRE — quem clica encontra erro.");
+  });
+
+  it("saída na 2ª mensagem: a frase de só cumprimentar vem logo depois dos critérios, antes da estratégia", () => {
+    const estrategia = montarEstrategia({ ...base, classe: "fora-do-ar" });
+    const frase =
+      "Esta primeira mensagem NÃO apresenta serviço, preço nem proposta: só cumprimenta e confirma se falou com a empresa certa.";
+    const comFrase = instrucaoDeAbordagemFria("Seja cordial.", "tem site", "Voz: direta.", estrategia, true);
+    expect(comFrase).toContain(`Critérios a confirmar durante a conversa: tem site\n${frase}\nVoz: direta.\n`);
+    expect(comFrase.indexOf(frase)).toBeLessThan(comFrase.indexOf("Estratégia de abordagem"));
+    // Sem o modo, nada muda: a mesma instrução de antes, sem a frase.
+    const semFrase = instrucaoDeAbordagemFria("Seja cordial.", "tem site", "Voz: direta.", estrategia);
+    expect(semFrase).not.toContain(frase);
+    expect(semFrase).toBe(comFrase.replace(`\n${frase}`, ""));
   });
 
   it("chamar sem tradutor é o mesmo que passar a identidade, em toda a matriz", () => {
