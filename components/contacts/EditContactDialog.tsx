@@ -73,6 +73,11 @@ export function EditContactDialog({
 
   const customFields = useWatch({ control: form.control, name: "custom_fields" });
   const tags = useWatch({ control: form.control, name: "tags" }) ?? [];
+  // A etiqueta que o texto AINDA digitado no campo de etiquetas viraria — o
+  // campo avisa pelo `onPendente`, e o `Salvar` inclui isto no payload. Sem
+  // isso, quem digita e salva sem Enter perde o texto em silêncio (defeito
+  // medido na tela do PR #2831).
+  const [etiquetaPendente, setEtiquetaPendente] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -89,9 +94,17 @@ export function EditContactDialog({
 
   async function onSubmit(values: FormShape) {
     setServerError(null);
+    // O texto que ficou NO CAMPO sem Enter não pode sumir ao salvar (defeito
+    // medido na tela do PR #2831): quem digita "cliente diamante", ou uma
+    // etiqueta que já existe, e clica em Salvar espera a etiqueta gravada. O
+    // campo já resolveu o pendente pela MESMA régua do Enter — reusa a grafia
+    // existente, ou cria a nova — e ela entra no payload aqui.
     // A MESMA normalização da API (lib/contacts/tag-normalizada): o que a ficha
     // grava é o que o filtro `?tag=` casa (issue #1224).
-    const tags = normalizarTags(values.tags ?? []);
+    const tags = normalizarTags([
+      ...(values.tags ?? []),
+      ...(etiquetaPendente ? [etiquetaPendente] : []),
+    ]);
 
     const payload: Record<string, unknown> = {};
     if (values.name?.trim()) payload.name = values.name.trim();
@@ -152,6 +165,7 @@ export function EditContactDialog({
             <EtiquetasDoContato
               inputId="ec-tags"
               value={tags}
+              onPendente={setEtiquetaPendente}
               onChange={(next) => form.setValue("tags", next, { shouldDirty: true })}
               vocabulario={vocabulario}
               canonicalTags={canonicalTags}

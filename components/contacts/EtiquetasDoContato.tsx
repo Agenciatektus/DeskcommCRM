@@ -26,6 +26,26 @@
  * DOIS editores de `contacts.tags` e configurável) é o PR seguinte; mantê-la só
  * aqui deixaria o campo com duas regras e deixaria a variante entrar pelo
  * `ContactTagsEditor` do inbox.
+ *
+ * ─── O texto digitado não pode sumir ao SALVAR ──────────────────────────────
+ *
+ * O texto em digitação mora num `useState` DESTE campo (`draft`): enquanto não
+ * vira chip, ele não está no `value` que quem monta a ficha lê ao salvar. Quem
+ * digitava "cliente diamante" (ou "cliente ouro", que já existia e já aparecia
+ * como sugestão), clicava em Salvar SEM apertar Enter e via o diálogo fechar
+ * com "Contato atualizado" — e a API gravava `tags: []`. O texto sumia em
+ * silêncio, porque só o Enter, o clique na sugestão e o clique em "Criar"
+ * chamavam `onChange`.
+ *
+ * A porta se fecha por `onPendente`, sincronizado no `onChange` do input: o
+ * campo avisa quem o monta o que o texto digitado VIRARIA se o Enter fosse
+ * apertado agora — a etiqueta existente, pela mesma grafia, ou a nova —, e
+ * `null` quando não há o que gravar (vazio, já no contato, no teto ou
+ * desabilitado). O `Salvar` do diálogo então inclui essa etiqueta no payload em
+ * vez de descartá-la. A régua de reuso de grafia NÃO se divide: ela vive em
+ * `lib/contacts/etiquetas` e é chamada aqui, dona do `draft`; e os três
+ * caminhos que já funcionavam seguem intocados — este só ACRESCENTA o do
+ * salvar.
  */
 import { useMemo, useState } from "react";
 
@@ -53,6 +73,12 @@ interface Props {
   disabled?: boolean;
   /** `id` do `<input>`, para o `<Label htmlFor>` de quem monta a ficha. */
   inputId?: string;
+  /**
+   * A etiqueta que o texto AINDA digitado viraria se o Enter fosse apertado
+   * agora, ou `null` quando não há o que gravar. Quem monta o diálogo guarda
+   * este valor para o `Salvar` não descartar o texto em silêncio.
+   */
+  onPendente?: (tag: string | null) => void;
 }
 
 /** O teto de etiquetas por contato — o MESMO dos editores do produto. */
@@ -65,6 +91,7 @@ export function EtiquetasDoContato({
   canonicalTags,
   disabled = false,
   inputId = "etiquetas-do-contato",
+  onPendente,
 }: Props) {
   const t = useT();
   const [draft, setDraft] = useState("");
@@ -88,12 +115,29 @@ export function EtiquetasDoContato({
   const textoNovo = digitou && !existente && !jaSelecionada;
   const noTeto = value.length >= MAXIMO_DE_ETIQUETAS;
 
+  /**
+   * A régua ÚNICA de quem digita: a etiqueta EXISTENTE vence (reusa a grafia,
+   * nunca cria variante), o texto novo vira etiqueta, e nada acontece quando não
+   * há o que gravar. É a mesma função que o Enter, o clique em "Criar" e o
+   * `Salvar` do diálogo usam — e o teto e o `disabled` valem nos três.
+   */
+  function alvoDoDigitado(texto: string): string | null {
+    if (disabled || noTeto) return null;
+    return etiquetaParaGravar({ conhecidas, selecionadas: value, digitado: texto });
+  }
+
+  /** Troca o texto digitado — e avisa o que ele viraria — no MESMO gesto. */
+  function definirDraft(texto: string) {
+    setDraft(texto);
+    onPendente?.(alvoDoDigitado(texto));
+  }
+
   function adicionar(tag: string) {
     if (disabled || noTeto) return;
     const k = chaveDeComparacaoDeEtiqueta(tag);
     if (k === "" || value.some((v) => chaveDeComparacaoDeEtiqueta(v) === k)) return;
     onChange([...value, tag]);
-    setDraft("");
+    definirDraft("");
   }
 
   function remover(tag: string) {
@@ -101,12 +145,9 @@ export function EtiquetasDoContato({
     onChange(value.filter((v) => v !== tag));
   }
 
-  function confirmar() {
-    const alvo = etiquetaParaGravar({
-      conhecidas,
-      selecionadas: value,
-      digitado: draft,
-    });
+  /** O texto digitado VIRA etiqueta — é o que o Enter e o "Criar" fazem. */
+  function confirmarDigitado() {
+    const alvo = alvoDoDigitado(draft);
     if (alvo) adicionar(alvo);
   }
 
@@ -137,13 +178,13 @@ export function EtiquetasDoContato({
       <Input
         id={inputId}
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => definirDraft(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            confirmar();
+            confirmarDigitado();
           }
-          if (e.key === "Escape") setDraft("");
+          if (e.key === "Escape") definirDraft("");
         }}
         placeholder={t("Digite para buscar etiquetas…")}
         maxLength={TAMANHO_MAXIMO_DA_TAG}
@@ -173,7 +214,7 @@ export function EtiquetasDoContato({
           {textoNovo && (
             <button
               type="button"
-              onClick={confirmar}
+              onClick={confirmarDigitado}
               disabled={disabled || noTeto}
               data-testid="criar-etiqueta"
               className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:border-solid hover:text-foreground disabled:opacity-50"
