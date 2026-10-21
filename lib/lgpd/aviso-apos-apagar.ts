@@ -1,5 +1,5 @@
 /**
- * O AVISO DEPOIS DE APAGAR — o art. 12.º, n.º 3 do RGPD e o art. 18 da LGPD.
+ * O AVISO DEPOIS DE APAGAR — o art. 12.º, n.º 3 do RGPD (só fora do Brasil).
  *
  * A cascata apaga e CALA. Quem pediu para ser esquecido recebe, hoje, o mesmo
  * silêncio de quem nunca pediu nada — e a lei diz o contrário: informada a

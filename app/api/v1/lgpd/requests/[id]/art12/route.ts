@@ -28,7 +28,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  *
  * Idempotência pela PRÓPRIA LINHA: um segundo `POST` do mesmo desfecho devolve
  * 200 com `duplicate: true` e não manda o segundo e-mail. O marcador mora em
- * `request_payload.art12`, que a tela de detalhe já mostra.
+ * `request_payload.art12` (nenhuma tela o lê ainda).
  *
  * Auth: cookie session, role >= admin (ou platform admin).
  */
@@ -283,9 +283,9 @@ export async function POST(
       kind,
       dentro_do_prazo: marcaArt12.dentro_do_prazo,
       request_type: pedido.request_type,
-      // O motivo NÃO entra cru no audit: o texto completo está em
-      // `request_payload.art12`, que a tela de detalhe já mostra a quem tem
-      // direito. Aqui fica só a impressão digital, para correlação.
+      // O motivo NÃO entra cru no audit: o texto completo fica em
+      // `request_payload.art12`. Aqui fica só a impressão digital, para
+      // correlação.
       motivo_hash: createHash("sha256").update(reason).digest("hex").slice(0, 12),
       prorrogou_prazo: novoPrazo !== null,
     },

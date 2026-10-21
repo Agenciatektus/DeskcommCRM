@@ -321,7 +321,7 @@ export async function processLgpdRedact(event: EventRow): Promise<HandlerResult>
             media_queued: cascade.mediaPaths.length,
             callback_status: callback.status,
             // O aviso do art. 12.º é prova do cumprimento, não enfeite: a razão
-            // fica no resultado para a tela de detalhe mostrar POR QUE não saiu.
+            // fica no resultado (`result.art12_notice`), com o POR QUÊ quando não saiu.
             ...(art12Notice ? { art12_notice: art12Notice } : {}),
           },
           cascaded_to: cascade.counts,
