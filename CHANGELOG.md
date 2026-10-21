@@ -45,9 +45,10 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
   - Se tem só uma delas, a atualização avisa: apague as duas linhas e rode `bash hostgator-setup-kit/update.sh` para o kit criar um par novo.
   - Se a criação falhar, a atualização segue normal e avisa; para tentar de novo, rode `bash hostgator-setup-kit/update.sh`.
   - Instalação sem https continua sem esses avisos.
-  - O backup não leva o `.env`. Ao restaurar numa VPS nova, leve o `.env` junto para manter o par.
+  - Servidor montado sem o kit continua gerando o par à mão (`npx web-push generate-vapid-keys`).
+  - O backup não leva o `.env`. Ao restaurar numa VPS nova, leve o `.env` junto para manter o par; sem ele, nasce um par novo e, se os avisos pararem de chegar, basta religá-los em Notificações.
 
-- **Prospecção mostra auditoria do site de cada empresa** Cada empresa da fila mostra a auditoria do site (veredito, o que falta, estratégia de abordagem) e uma prévia da mensagem, geradas em segundo plano. Cada prévia consome crédito de IA, e há interruptores na busca para desligar a avaliação e a prévia. Nas campanhas que já existiam, a prévia fica desligada: ninguém passa a gastar crédito ao atualizar. Nada a fazer na VPS. Crédito: @paulolimajr77.
+- **Prospecção mostra auditoria do site de cada empresa** Cada empresa da fila mostra a auditoria do site (veredito, o que falta, estratégia de abordagem) e uma prévia da mensagem, geradas em segundo plano. A prévia, inclusive a gerada sozinha sem ninguém revisar, vira o rascunho que o envio usa. Cada prévia consome crédito de IA, e há interruptores na busca para desligar a avaliação e a prévia. Nas campanhas que já existiam, a prévia fica desligada: ninguém passa a gastar crédito ao atualizar. Nada a fazer na VPS. Crédito: @paulolimajr77.
 
 - **A prospecção deixa escolher quando oferecer a opção de parar de receber: na 1ª ou na 2ª mensagem** A campanha ganha a opção "Quando oferecer a opção de parar de receber", que nasce em "Na primeira mensagem (recomendado)". O bloqueio por "PARAR" vale desde a primeira mensagem em todos os modos. Nada muda para quem não mexer na opção. Crédito: @paulolimajr77
 
@@ -77,7 +78,7 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 - **As telas do CRM deixam de consultar o login duas vezes só para conferir a verificação em duas etapas** Uma espera a menos por tela; a regra da verificação em duas etapas não muda. Crédito: @SrPascoa
 
-- **Avisos fora do app deixam a empresa escolher o que aparece, param ao sair e respeitam o plantão** Em Configurações › Notificações, quem administra escolhe o que os avisos mostram fora do app. O padrão passa a ser só quem mandou, sem a mensagem; para voltar a ver a mensagem, escolha a terceira opção nessa tela. Com distribuição automática, o aviso de conversa sem responsável vai só para quem está de plantão. Nada a fazer na atualização.
+- **Avisos fora do app deixam a empresa escolher o que aparece, param ao sair e respeitam o plantão** Em Configurações › Notificações, quem administra escolhe o que os avisos mostram fora do app. O padrão passa a ser só quem mandou, sem a mensagem; para voltar a ver a mensagem, escolha a terceira opção nessa tela. Com distribuição automática, o aviso de conversa sem responsável vai só para quem está de plantão e, se ninguém estiver, para gerentes e administradores. Nada a fazer na atualização.
 
 ### Corrigido
 
@@ -99,7 +100,9 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
   Contribuição de @Tong-bit-art (#3146), a partir da issue #3104.
 
-- **O filtro de palavras do agente passa a valer** O campo "Só responder quando a mensagem falar de algo específico" era gravado e ignorado. Agora, no modo automático, a IA não responde a mensagem sem nenhuma das palavras, inclusive no meio da conversa. Pedido de atendente e pedido para parar continuam passando. No modo assistido, nada muda. Veja o aviso acima.
+- **O filtro de palavras do agente passa a valer** O campo "Só responder quando a mensagem falar de algo específico" era gravado e ignorado. Agora, no modo automático, a IA não responde a mensagem sem nenhuma das palavras, inclusive no meio da conversa. A mensagem barrada não gera aviso na Central; só a vê quem abrir a conversa. Pedido de atendente, pedido para parar e áudio ou imagem ainda sem transcrição continuam passando. No modo assistido, nada muda. Veja o aviso acima.
+
+  Fora do horário do agente, pedido de atendente e pedido para parar passam a ser tratados quando a mensagem chega, se a janela de envio do número estiver aberta (por padrão, 7h às 22h); fora dela, esperam a janela abrir, como antes.
 
   Corrigido por @webtecnica (#2696), a partir do relato de @FelipeMartini (#2679).
 
@@ -111,13 +114,13 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
   Medido em produção e corrigido por @RenanzitoIA (#3103).
 
-- **A abertura da campanha de prospecção passou a respeitar o "Estilo de resposta" do agente e a dividir a mensagem fria em várias bolhas** Com o estilo ligado, a abordagem sai em até 3 bolhas curtas, com o "responda PARAR" na primeira.
+- **A abertura da campanha de prospecção passou a respeitar o "Estilo de resposta" do agente e a dividir a mensagem fria em várias bolhas** Com o estilo ligado, a abordagem sai em até 3 bolhas curtas; quando a campanha oferece a saída na primeira mensagem, o "responda PARAR" vai na primeira bolha.
 
   Nada precisa ser feito ao atualizar: quem tem o estilo desligado continua recebendo a abordagem em uma mensagem. Contribuição de @webtecnica, a partir da issue #2665 (PR #2680).
 
 - **Sair da conta encerra os avisos em todos os aparelhos que ela desconecta** Para voltar a receber avisos num aparelho, entre de novo e ligue os avisos em Configurações › Notificações. Corrige a frase "Sair da conta encerra os avisos daquele aparelho" da nota anterior. Nada a fazer na atualização.
 
-- **O push segue o vínculo e o papel de quem recebe** As notificações só vão para quem tem acesso ativo, e revogar um membro apaga as inscrições dele. Ativar notificações num navegador com serviço de push desconhecido é recusado. Nada a fazer na atualização.
+- **O push segue o vínculo e o papel de quem recebe** As notificações só vão para quem tem acesso ativo, e revogar um membro apaga as inscrições dele naquela organização. Ativar notificações num navegador com serviço de push desconhecido é recusado. Nada a fazer na atualização.
 
 - **As receitas prontas do banco externo seguem à risca o que o administrador configurou** O assistente só executa receitas ativas na conexão. Nada a fazer na atualização.
 
