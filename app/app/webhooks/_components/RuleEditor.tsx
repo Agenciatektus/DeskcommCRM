@@ -68,8 +68,9 @@ interface ConditionRow {
 }
 
 /**
- * Como o grupo do TOPO combina as condições (#2727). O motor guarda `{all:…}` /
- * `{any:…}` (aninháveis); a tela expõe um grupo — o do topo — e serializa
+ * Como o grupo do TOPO combina as condições (#2727). O motor guarda a lista
+ * simples ou um grupo `{all:…}`/`{any:…}` do TOPO (a porta recusa aninhamento;
+ * ver `conditionGroupSchema`); a tela expõe esse grupo e serializa
  * `todas` como a lista simples (o formato antigo, ≡ `all`) e `qualquer` como
  * `{any:[…]}`. Grupos ANINHADOS são do modelo/avaliador, não desta tela.
  */

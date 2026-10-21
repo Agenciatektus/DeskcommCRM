@@ -221,7 +221,8 @@ export const TRIGGER_EVENTS = Object.keys(ENTIDADE_ESPERADA_POR_GATILHO) as [
  * As condições de uma regra (#2727): o schema e o avaliador vivem juntos em
  * `lib/automation/conditions.ts`, para a tela, a porta da API e o motor lerem a
  * MESMA definição. Aqui só se reexporta — `conditionsSchema` aceita a lista
- * antiga (≡ `all`) e os grupos `{all|any}` aninháveis.
+ * antiga (≡ `all`) e o grupo `{all|any}` do topo (o aninhamento é recusado na
+ * porta; ver `conditionGroupSchema`).
  */
 export { conditionSchema } from "@/lib/automation/conditions";
 
