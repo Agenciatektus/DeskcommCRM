@@ -2224,6 +2224,7 @@
   "Não conseguimos preparar o arquivo para envio.": "我们无法准备要发送的文件。",
   "Não foi possível enviar esta mensagem.": "无法发送此消息。",
   "Aguardando conexão": "等待连接",
+  "Não enviada — sem conexão": "未发送——无连接",
   "Enviar esta mensagem de novo?": "要再次发送这条消息吗？",
   "Pode ser que esta mensagem já tenha chegado. Confira no WhatsApp do cliente antes de enviar de novo.": "这条消息可能已经送达。再次发送前，请先在客户的 WhatsApp 中确认。",
   "Enviar de novo": "再次发送",

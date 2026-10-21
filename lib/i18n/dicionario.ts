@@ -6307,6 +6307,9 @@ export const DICIONARIO: Traducoes = {
   "Aguardando conexão": {
     es: "Esperando conexión",
   },
+  "Não enviada — sem conexão": {
+    es: "No enviado — sin conexión",
+  },
   "Enviar esta mensagem de novo?": {
     es: "¿Enviar este mensaje de nuevo?",
   },

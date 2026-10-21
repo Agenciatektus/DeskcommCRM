@@ -16,7 +16,9 @@ import { credenciaisSupabaseDeTeste } from "../../scripts/lib/env-de-teste";
  *   C-1  a bolha que falhou diz o motivo em frase legível (sem código do canal,
  *        sem endereço) e "Tentar de novo" tem 44px e cabe na tela;
  *   C-2  tocar em "Tentar de novo" muda a MESMA bolha (a contagem não muda) para
- *        "Aguardando conexão"; como nada saiu, ela mantém o lugar no fio;
+ *        "Não enviada — sem conexão" (e não "Aguardando conexão": ninguém
+ *        reenvia a mensagem do atendente sozinho quando o número volta); o
+ *        botão continua lá, e como nada saiu a bolha mantém o lugar no fio;
  *   C-3  no caso em que a mensagem pode ter chegado, o toque abre a confirmação;
  *        "Cancelar" mantém "Falhou" e "Enviar de novo" reenvia;
  *   C-4  mensagem da IA que falhou mostra o motivo e não tem botão.
@@ -28,7 +30,7 @@ import { credenciaisSupabaseDeTeste } from "../../scripts/lib/env-de-teste";
  * `failed/channel_disabled`. Para reenviar, o canal é reativado pelo service
  * role, mas em `STARTING` (fora de WORKING, e fora dos status que acendem a
  * faixa de conexão caída): o reenvio passa pelas guardas e o handler deixa a
- * linha `queued` com motivo, que a tela mostra como "Aguardando conexão".
+ * linha `queued` com motivo, que a tela mostra como "Não enviada — sem conexão".
  *
  * C-3: o `sending` é posto À MÃO (o handler nunca grava `sending`, e o CI não
  * tem canal de verdade): uma linha outbound do agente é inserida em `sending`
@@ -223,8 +225,10 @@ test.describe("reenvio pelo celular", () => {
     const antes = await bolhas(page).count();
     await tentarDeNovo(b).tap();
 
-    await expect(b.getByText("Aguardando conexão")).toBeVisible({ timeout: 30_000 });
+    await expect(b.getByText("Não enviada — sem conexão")).toBeVisible({ timeout: 30_000 });
+    await expect(b.getByText("Aguardando conexão"), "promete um envio que ninguém faz").toHaveCount(0);
     await expect(b.getByText("Falhou")).toHaveCount(0);
+    await expect(tentarDeNovo(b), "a mensagem parada sem conexão ficou sem saída").toBeVisible();
     expect(await bolhas(page).count(), "nasceu uma segunda bolha em vez de mudar a mesma").toBe(antes);
     // Nada saiu (o canal ainda sobe): a bolha mantém a hora e o lugar, antes da
     // mensagem que o cliente mandou depois. Só o envio aceito vai para o fim.
@@ -233,7 +237,7 @@ test.describe("reenvio pelo celular", () => {
     const doCliente = ordem.findIndex((txt) => txt.includes(respostaDoCliente));
     expect(minha, `a bolha que não saiu mudou de lugar: ${minha} vs ${doCliente}`).toBeLessThan(doCliente);
 
-    await page.screenshot({ path: path.join(EVIDENCE, "c2-aguardando-conexao.png") });
+    await page.screenshot({ path: path.join(EVIDENCE, "c2-nao-enviada-sem-conexao.png") });
   });
 
   test("C-3 quando pode ter chegado, o toque pede confirmação antes", async ({ page }) => {
@@ -273,7 +277,7 @@ test.describe("reenvio pelo celular", () => {
 
     await tentarDeNovo(b).tap();
     await page.getByRole("alertdialog").getByRole("button", { name: "Enviar de novo" }).tap();
-    await expect(b.getByText("Aguardando conexão")).toBeVisible({ timeout: 30_000 });
+    await expect(b.getByText("Não enviada — sem conexão")).toBeVisible({ timeout: 30_000 });
   });
 
   test("C-4 mensagem da IA que falhou mostra o motivo e não tem botão", async ({ page }) => {

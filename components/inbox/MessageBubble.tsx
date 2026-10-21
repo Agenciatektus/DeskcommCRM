@@ -68,14 +68,25 @@ interface Props {
   podeReenviarDeOutros?: boolean;
 }
 
-function AckIndicator({ status, aguardandoConexao, t }: { status: string; aguardandoConexao: boolean; t: (texto: string) => string }) {
+/** Quem tem um motor que reenvia sozinho quando a conexão volta (`redriveQueued`). */
+const SAI_SOZINHA_QUANDO_VOLTAR = new Set(["ai", "automation", "system"]);
+
+function AckIndicator({ status, paradaSemConexao, saiSozinha, t }: {
+  status: string; paradaSemConexao: boolean; saiSozinha: boolean; t: (texto: string) => string;
+}) {
   // Só a linha que o envio PAROU por falta de conexão (`queued_reason`). Todo
   // envio nasce `queued` por um instante; mostrar o relógio nele diria
   // "aguardando" a cada mensagem que sai normalmente.
-  if (aguardandoConexao) {
-    return (
+  if (paradaSemConexao) {
+    // "Aguardando" só promete o que acontece: a mensagem de pessoa não é
+    // reenviada por ninguém quando o número volta, e fica com o botão.
+    return saiSozinha ? (
       <span className="inline-flex items-center gap-0.5 font-semibold">
         <Clock size={10} weight="bold" aria-hidden /> {t("Aguardando conexão")}
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-0.5 font-semibold">
+        <WarningOctagon size={10} weight="bold" aria-hidden /> {t("Não enviada — sem conexão")}
       </span>
     );
   }
@@ -172,7 +183,7 @@ export function MessageBubble({
   const reenvio = onReenviar
     ? reenvioDaMensagem(message, { userId: viewerUserId, podeReenviarDeOutros, agora })
     : "nenhum";
-  const aguardandoConexao = message.status === "queued" && Boolean(message.metadata?.queued_reason)
+  const paradaSemConexao = message.status === "queued" && Boolean(message.metadata?.queued_reason)
     && !message.metadata?._optimistic;
   // O MOTIVO à vista, e não só no Tooltip: o dedo não abre Tooltip. O texto
   // cru do canal fica fora daqui — ele pode trazer endereço interno do serviço.
@@ -497,7 +508,8 @@ export function MessageBubble({
           {showCitationButton && (
             <CitationButton citations={citations} messageId={message.id} />
           )}
-          {isOutbound && !isFailed && <AckIndicator status={message.status} aguardandoConexao={aguardandoConexao} t={t} />}
+          {isOutbound && !isFailed && <AckIndicator status={message.status} paradaSemConexao={paradaSemConexao}
+            saiSozinha={SAI_SOZINHA_QUANDO_VOLTAR.has(message.sent_via)} t={t} />}
           {isFailed && (
             // Provider local: o painel do inbox não tem TooltipProvider ancestral e
             // este Tooltip só monta em mensagem failed — sem o provider, abrir uma

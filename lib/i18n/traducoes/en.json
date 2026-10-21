@@ -3452,6 +3452,7 @@
   "Não conseguimos preparar o arquivo para envio.": "We couldn't prepare the file for sending.",
   "Não foi possível enviar esta mensagem.": "This message couldn't be sent.",
   "Aguardando conexão": "Waiting for connection",
+  "Não enviada — sem conexão": "Not sent — no connection",
   "Enviar esta mensagem de novo?": "Send this message again?",
   "Pode ser que esta mensagem já tenha chegado. Confira no WhatsApp do cliente antes de enviar de novo.": "This message may have already arrived. Check the customer's WhatsApp before sending it again.",
   "O WhatsApp não confirmou o envio a tempo. Pode ser que a mensagem tenha chegado.": "WhatsApp didn't confirm the send in time. The message may have arrived.",

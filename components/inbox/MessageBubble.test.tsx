@@ -440,9 +440,21 @@ describe("MessageBubble — mensagem que falhou", () => {
     await waitFor(() => expect(onReenviar).toHaveBeenCalledWith(true));
   });
 
-  it("parada por falta de conexão diz 'Aguardando conexão'; o envio normal não", () => {
+  it("mensagem de pessoa parada sem conexão diz que NÃO foi enviada, e oferece tentar de novo", () => {
+    // Ninguém reenvia a mensagem do atendente quando o número volta: "Aguardando"
+    // seria uma promessa que não se cumpre.
+    render(<MessageBubble message={msg({
+      status: "queued", sent_via: "user", sent_by_user_id: "eu", updated_at: agora(),
+      metadata: { queued_reason: "channel_session_not_working" },
+    })} viewerUserId="eu" onReenviar={vi.fn(async () => undefined)} />);
+    expect(screen.getByText("Não enviada — sem conexão")).toBeInTheDocument();
+    expect(screen.queryByText("Aguardando conexão")).toBeNull();
+    expect(screen.getByRole("button", { name: "Tentar de novo" })).toBeInTheDocument();
+  });
+
+  it("parada por falta de conexão da IA diz 'Aguardando conexão'; o envio normal não", () => {
     const { unmount } = render(<MessageBubble message={msg({
-      status: "queued", metadata: { queued_reason: "channel_session_not_working" },
+      status: "queued", sent_via: "ai", metadata: { queued_reason: "channel_session_not_working" },
     })} />);
     expect(screen.getByText("Aguardando conexão")).toBeInTheDocument();
     unmount();
