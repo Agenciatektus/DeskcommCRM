@@ -192,16 +192,16 @@ const SUFIXOS_DE_PESSOA = ["@c.us", "@s.whatsapp.net"];
 /**
  * O contato do aparelho ESTÁ salvo na agenda dele?
  *
- * Três estados, porque os dois motores do WAHA não devolvem a mesma forma:
+ * Três estados, porque os dois motores do canal não devolvem a mesma forma:
  *
  * - `isMyContact === true` — salvo; importa (é a forma do WEBJS).
  * - `isMyContact === false` — NÃO salvo: o marcador explícito manda, mesmo que
  *   venha um `name` (o nome pode ser o do perfil do WhatsApp).
- * - `isMyContact` AUSENTE — o motor não manda o marcador (o `toWAContact` do
- *   NOWEB monta `{id, lid, name, notify, verifiedName, imgUrl, status}`, sem
- *   ele). Aí o `name` É o nome salvo no celular, e a presença dele é a única
- *   prova de agenda que existe. `pushname`/`notify` descreve o PERFIL e NÃO
- *   significa salvo — um contato só com pushname não está na agenda.
+ * - `isMyContact` AUSENTE — o motor não manda o marcador (o NOWEB entrega
+ *   `{id, lid, name, pushname, verifiedName, imgUrl, status}`, sem ele). Aí o
+ *   `name` É o nome salvo no celular, e a presença dele é a única prova de
+ *   agenda que existe. `pushname` descreve o PERFIL e NÃO significa salvo — um
+ *   contato só com pushname não está na agenda.
  *
  * Sem esta terceira coluna, uma instalação padrão (NOWEB) lê N contatos e
  * importa ZERO: todo item chega sem `isMyContact` e caía no mesmo descarte de
