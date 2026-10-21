@@ -56,13 +56,15 @@ export function useAlterarMensagem(conversationId: string | null) {
   // servidor, e depois de um "não" a bolha tem de mostrar o estado real.
   const reenviar = useMutation({
     mutationFn: ({ id, confirmado }: { id: string; confirmado: boolean }) =>
-      apiClient.post<{ status: string; error_code: string | null }>(
+      apiClient.post<{ data: { status: string; error_code: string | null } }>(
         `/api/v1/messages/${id}/retry`,
         confirmado ? { confirmado: true } : {},
       ),
-    // O canal recusou de novo: a rota responde 200 com a linha em `failed`, e
-    // sem este aviso o toque parece não ter feito nada (WhatsApp fora do ar).
-    onSuccess: (msg) => {
+    // O canal recusou de novo: a rota responde 200 (`ok(message)`, o corpo vem
+    // em `{ data }`) com a linha em `failed`, e sem este aviso o toque parece
+    // não ter feito nada (WhatsApp fora do ar).
+    onSuccess: (res) => {
+      const msg = res?.data;
       if (msg?.status !== "failed") return;
       const codigo = msg.error_code ?? "";
       const motivo = fraseDaFalhaDeCanal(codigo)

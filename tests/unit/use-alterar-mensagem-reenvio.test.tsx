@@ -52,7 +52,7 @@ describe("reenvio pela bolha: depois de uma recusa a bolha mostra o estado real"
 
 describe("reenvio que o canal recusou de novo", () => {
   it("a rota responde 200 com a linha em failed: a pessoa é avisada, com o motivo", async () => {
-    post.mockResolvedValueOnce({ status: "failed", error_code: "channel_disabled" });
+    post.mockResolvedValueOnce({ data: { status: "failed", error_code: "channel_disabled" } });
     const { hook } = setup();
     await reenviar(hook);
     expect(toastErro).toHaveBeenCalledTimes(1);
@@ -63,14 +63,14 @@ describe("reenvio que o canal recusou de novo", () => {
   });
 
   it("código sem frase cai na frase genérica, nunca no texto cru do canal", async () => {
-    post.mockResolvedValueOnce({ status: "failed", error_code: "codigo_novo" });
+    post.mockResolvedValueOnce({ data: { status: "failed", error_code: "codigo_novo" } });
     const { hook } = setup();
     await reenviar(hook);
     expect((toastErro.mock.calls[0] as [string, { description: string }])[1].description).toBe("Não foi possível enviar esta mensagem.");
   });
 
   it("reenvio aceito (queued/sent) não dispara aviso: a bolha muda sozinha", async () => {
-    post.mockResolvedValueOnce({ status: "queued", error_code: null });
+    post.mockResolvedValueOnce({ data: { status: "queued", error_code: null } });
     const { hook } = setup();
     await reenviar(hook);
     expect(toastErro).not.toHaveBeenCalled();

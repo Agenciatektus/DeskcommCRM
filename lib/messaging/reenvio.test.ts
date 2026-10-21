@@ -98,9 +98,9 @@ describe("reenvioDaMensagem", () => {
     expect(reenvioDaMensagem(msg({ ...midia, media_storage_path: "org/conv/a.jpg", metadata: { media_status: "expired" } }), agente)).toBe("nenhum");
   });
 
-  it("mídia fora da pasta da conversa (ex.: PDF de proposta): nenhum, porque o envio a recusaria", () => {
+  it("mídia fora da pasta da conversa (ex.: PDF de proposta, `${orgId}/${propostaId}.pdf`): nenhum, porque o envio a recusaria", () => {
     const midia = { type: "document", body: null, error_code: "channel_disabled" };
-    expect(reenvioDaMensagem(msg({ ...midia, media_storage_path: "propostas/org/p1.pdf" }), agente)).toBe("nenhum");
+    expect(reenvioDaMensagem(msg({ ...midia, media_storage_path: "org/proposta-1.pdf" }), agente)).toBe("nenhum");
     expect(reenvioDaMensagem(msg({ ...midia, media_storage_path: "org/outra-conv/a.pdf" }), agente)).toBe("nenhum");
     expect(reenvioDaMensagem(msg({ ...midia, media_storage_path: "org/conv/a.pdf" }), agente)).toBe("seguro");
   });
