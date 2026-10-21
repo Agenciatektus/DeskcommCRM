@@ -110,7 +110,7 @@ export function ChatThread({
   const activeOrg = useActiveOrg();
   const currentUser = useUser();
   const deleteNote = useDeleteNote(conversationId ?? "");
-  const { editar, apagar, ocultar, restaurar } = useAlterarMensagem(conversationId);
+  const { editar, apagar, ocultar, restaurar, reenviar } = useAlterarMensagem(conversationId);
   const canManage = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
   const canalAlteraEnviada = transportaMensagem(provider)
     && capabilitiesOf(provider as ChannelProvider).alteraMensagemEnviada;
@@ -426,6 +426,10 @@ export function ChatThread({
                   onRestaurar={canManage && item.data.direction === "inbound"
                     ? () => restaurar.mutateAsync(item.data.id).then(() => undefined)
                     : undefined}
+                  onReenviar={item.data.direction === "outbound"
+                    ? (confirmado) => reenviar.mutateAsync({ id: item.data.id, confirmado }).then(() => undefined)
+                    : undefined}
+                  podeReenviarDeOutros={canManage}
                 />
               ),
             )}

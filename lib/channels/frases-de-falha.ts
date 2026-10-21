@@ -17,7 +17,11 @@
  * frase tem que dizer o que ele faz a respeito. "waha_error" não diz.
  */
 
-const FRASES: Record<string, string> = {
+/**
+ * Exportada para a bolha da conversa poder escrever `t(FRASES_DE_FALHA[codigo])`:
+ * é a forma que a cerca de i18n sabe resolver, e ela cobra o espanhol de cada frase.
+ */
+export const FRASES_DE_FALHA: Record<string, string> = {
   // Sessão do canal fora de WORKING — o número está desconectado.
   channel_session_not_working:
     "O número escolhido não está conectado no momento. Reconecte em Conexões — a mensagem sai sozinha quando ele voltar.",
@@ -53,5 +57,5 @@ const FRASES: Record<string, string> = {
  */
 export function fraseDaFalhaDeCanal(codigo: string | null | undefined): string | null {
   if (!codigo) return null;
-  return FRASES[codigo] ?? null;
+  return Object.hasOwn(FRASES_DE_FALHA, codigo) ? FRASES_DE_FALHA[codigo]! : null;
 }

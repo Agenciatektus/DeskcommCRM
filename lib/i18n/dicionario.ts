@@ -6301,6 +6301,18 @@ export const DICIONARIO: Traducoes = {
   "Não conseguimos preparar o arquivo para envio.": {
     es: "No pudimos preparar el archivo para el envío.",
   },
+  "Não foi possível enviar esta mensagem.": {
+    es: "No se pudo enviar este mensaje.",
+  },
+  "Aguardando conexão": {
+    es: "Esperando conexión",
+  },
+  "Enviar esta mensagem de novo?": {
+    es: "¿Enviar este mensaje de nuevo?",
+  },
+  "Pode ser que esta mensagem já tenha chegado. Confira no WhatsApp do cliente antes de enviar de novo.": {
+    es: "Puede que este mensaje ya haya llegado. Verifica en el WhatsApp del cliente antes de enviarlo de nuevo.",
+  },
   "O WhatsApp não confirmou o envio a tempo. Pode ser que a mensagem tenha chegado.": {
     es: "WhatsApp no confirmó el envío a tiempo. Puede que el mensaje haya llegado.",
   },

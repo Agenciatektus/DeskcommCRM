@@ -65,7 +65,7 @@ const FALHA_SEM_REENVIO = new Set([
 
 export function reenvioDaMensagem(
   msg: MensagemDoReenvio,
-  quem: { userId: string | null | undefined; podeReenviarDeOutros: boolean },
+  quem: { userId: string | null | undefined; podeReenviarDeOutros: boolean; agora?: number },
 ): TipoDeReenvio {
   if (msg.direction !== "outbound" || !["user", "crm"].includes(msg.sent_via)) return "nenhum";
   if (!quem.userId || (msg.sent_by_user_id !== quem.userId && !quem.podeReenviarDeOutros)) return "nenhum";
@@ -89,7 +89,8 @@ export function reenvioDaMensagem(
     // O relógio é o `updated_at`: o reenvio adianta ele, e é isso que faz um
     // segundo toque durante o envio cair em "em voo" em vez de reenviar.
     if (!msg.updated_at) return "nenhum";
-    return Date.now() - new Date(msg.updated_at).getTime() >= QUEUED_PARADA_MS ? "confirmar" : "nenhum";
+    const agora = quem.agora ?? Date.now();
+    return agora - new Date(msg.updated_at).getTime() >= QUEUED_PARADA_MS ? "confirmar" : "nenhum";
   }
 
   return "nenhum";

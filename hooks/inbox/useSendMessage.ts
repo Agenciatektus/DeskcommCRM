@@ -75,6 +75,8 @@ export function useSendMessage() {
         edited_at: null,
         revoked_at: null,
         created_at: new Date().toISOString(),
+        // Sem isto a regra de reenvio não sabe que a linha acabou de nascer.
+        updated_at: new Date().toISOString(),
       };
 
       qc.setQueryData<InfiniteData<MessagesPage>>(queryKey, (old) => {
