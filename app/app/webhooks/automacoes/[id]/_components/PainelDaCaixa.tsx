@@ -322,14 +322,19 @@ export function PainelDasCondicoes({
           )}
         </p>
         <ul className="space-y-1 text-sm">
-          {linhas.map((linha, i) => (
-            <li key={i} className="rounded-md border border-border px-3 py-2 text-text" data-testid={`condicao-${i}`}>
-              <span className="font-medium">{linha.field}</span>
-              <span className="text-text-muted">
-                {` ${t(OP_LABELS[linha.op])} ${OPERADORES_SEM_VALOR.has(linha.op) ? "" : linha.value}`.trimEnd()}
-              </span>
-            </li>
-          ))}
+          {linhas.map((linha, i) => {
+            // O mesmo rótulo do formulário e do cartão — nunca a chave técnica do campo.
+            const curado = campos.find((c) => c.value === linha.field);
+            const operador = t(curado?.lista && linha.op === "contains" ? "tem a tag" : OP_LABELS[linha.op]);
+            return (
+              <li key={i} className="rounded-md border border-border px-3 py-2 text-text" data-testid={`condicao-${i}`}>
+                <span className="font-medium">{curado ? t(curado.label) : linha.field}</span>
+                <span className="text-text-muted">
+                  {` ${operador} ${OPERADORES_SEM_VALOR.has(linha.op) ? "" : linha.value}`.trimEnd()}
+                </span>
+              </li>
+            );
+          })}
         </ul>
         <p className="text-xs text-text-muted">
           {`${contarCondicoes(grupoPreservado)} ${contarCondicoes(grupoPreservado) === 1 ? t("condição") : t("condições")}`}

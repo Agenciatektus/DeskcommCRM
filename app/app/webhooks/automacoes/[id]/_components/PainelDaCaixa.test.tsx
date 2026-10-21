@@ -119,3 +119,28 @@ describe("frase da caixa — operador sem valor não carrega trecho de valor", (
     expect(frase()).toBe(`${CAMPO.rotulo} é “Maria”`);
   });
 });
+
+describe("painel do grupo preservado — o campo aparece pelo rótulo, não pela chave", () => {
+  it("mostra « Nome do lead », e não « lead.title », nas condições do grupo", () => {
+    const linhas: LinhaDeCondicao[] = [
+      { field: CAMPO.field, op: "contains", value: "A" },
+      { field: CAMPO.field, op: "contains", value: "B" },
+    ];
+    render(
+      <IdiomaProvider locale="pt-BR">
+        <PainelDasCondicoes
+          dados={{
+            kind: "condicoes",
+            linhas,
+            grupoPreservado: { any: linhas.map(({ field, op, value }) => ({ field, op, value })) },
+          }}
+          evento={EVENTO}
+          onLinhas={() => {}}
+        />
+      </IdiomaProvider>,
+    );
+    const primeira = screen.getByTestId("condicao-0").textContent ?? "";
+    expect(primeira).toContain(CAMPO.rotulo);
+    expect(primeira).not.toContain(CAMPO.field);
+  });
+});
