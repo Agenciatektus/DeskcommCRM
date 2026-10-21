@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
         [org],
       ),
       db.query(
-        `select p.id,p.campaign_id,p.data,p.status,p.selected,p.error,p.lead_id,p.conversation_id,p.attempted_at,m.status as message_status,case when l.stage_id::text=c.config->>'qualified_stage_id' then 'qualified' when v.last_inbound_at is not null then 'replied' else p.status end as progress from prospecting_candidates p join prospecting_campaigns c on c.organization_id=p.organization_id and c.id=p.campaign_id left join crm_leads l on l.organization_id=p.organization_id and l.id=p.lead_id left join conversations v on v.organization_id=p.organization_id and v.id=p.conversation_id left join messages m on m.organization_id=p.organization_id and m.id=p.message_id where p.organization_id=$1 order by ${ordemCandidatos} limit 5000`,
+        `select p.id,p.campaign_id,p.data,p.status,p.selected,p.error,p.lead_id,p.conversation_id,p.attempted_at,p.automatic_sends,p.exit_offered_at,m.status as message_status,ct.is_blocked,case when l.stage_id::text=c.config->>'qualified_stage_id' then 'qualified' when v.last_inbound_at is not null then 'replied' else p.status end as progress from prospecting_candidates p join prospecting_campaigns c on c.organization_id=p.organization_id and c.id=p.campaign_id left join crm_leads l on l.organization_id=p.organization_id and l.id=p.lead_id left join conversations v on v.organization_id=p.organization_id and v.id=p.conversation_id left join messages m on m.organization_id=p.organization_id and m.id=p.message_id left join contacts ct on ct.organization_id=p.organization_id and ct.id=p.contact_id where p.organization_id=$1 order by ${ordemCandidatos} limit 5000`,
         [org],
       ),
       db.query(
@@ -101,7 +101,13 @@ export async function GET(req: NextRequest) {
         "select s.id,s.name,s.pipeline_id,p.name as pipeline_name from crm_stages s join crm_pipelines p on p.id=s.pipeline_id and p.organization_id=s.organization_id where s.organization_id=$1 and not s.is_archived and not s.is_won and not s.is_lost order by p.name,s.position",
         [org],
       ),
-      db.query("select settings from organizations where id=$1", [org]),
+      // O idioma da ORGANIZAÇÃO, a mesma fonte do rodapé que o worker envia: a dica
+      // da tela cita a frase enviada, não a do idioma da interface. `settings` traz
+      // a personalização da prospecção (voz e vocabulário).
+      db.query<{ settings: unknown; locale: string | null }>(
+        "select settings, locale from organizations where id=$1",
+        [org],
+      ),
     ]);
     // A tela só promete "Gerando prévia…" a uma campanha sem agente se existe um
     // agente padrão para escrevê-la (`config-padrao.ts`). Falha aqui não derruba a lista.
@@ -127,6 +133,7 @@ export async function GET(req: NextRequest) {
           }
         }),
         stages: stages.rows,
+        organization_locale: organizacao.rows[0]?.locale ?? null,
       },
       { requestId, headers },
     );

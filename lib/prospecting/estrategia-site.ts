@@ -487,18 +487,27 @@ export function blocoDeEstrategiaParaAgente(estrategia: EstrategiaDoLead): strin
  * `estrategia` (B1) soma o bloco de ângulo ao FIM. Ausente/nula, a saída é byte
  * a byte a de antes — é o que permite o par medir sem ruído quando não há
  * estratégia.
+ *
+ * `soCumprimenta` é o modo "saída na 2ª mensagem" da campanha (`exit_offer`
+ * diferente de `first_message`): a primeira mensagem só cumprimenta e confirma
+ * a empresa. A frase entra logo depois dos critérios, no mesmo lugar em que o
+ * worker a punha antes de a prévia e o envio dividirem esta função.
  */
 export function instrucaoDeAbordagemFria(
   instruction: string,
   qualification: string,
   voz?: string,
   estrategia?: EstrategiaDoLead | null,
+  soCumprimenta = false,
 ): string {
   const base =
     `${instruction}\nFaça uma primeira abordagem curta e transparente. ` +
     `Os dados vieram de pesquisa pública, não de um formulário preenchido pela pessoa. ` +
     `Não invente familiaridade, resultados ou interesse. Uma pergunta por vez. ` +
-    `Critérios a confirmar durante a conversa: ${qualification}`;
+    `Critérios a confirmar durante a conversa: ${qualification}` +
+    (soCumprimenta
+      ? "\nEsta primeira mensagem NÃO apresenta serviço, preço nem proposta: só cumprimenta e confirma se falou com a empresa certa."
+      : "");
   // Voz do vendedor (settings da org): some à moldura, nunca aos dados.
   // Vazia = byte a byte igual ao sem-voz (o par tela×ferramenta não sente).
   const comVoz = voz ? `${base}\n${voz}` : base;

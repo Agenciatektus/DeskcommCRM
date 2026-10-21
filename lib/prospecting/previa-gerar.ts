@@ -101,6 +101,8 @@ export async function gerarPreviaDoCandidato(
       cfg.data.qualification,
       blocoVozVendedor(personalizacao) || undefined,
       estrategia,
+      // A mesma regra do envio: a prévia é byte a byte o que o tick mandaria.
+      cfg.data.exit_offer !== "first_message",
     ),
     origem: "Pesquisa de empresas",
     origemDaAbordagem: "prospeccao_fria",
