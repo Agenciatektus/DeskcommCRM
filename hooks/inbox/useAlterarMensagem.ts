@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { useT } from "@/hooks/i18n/useT";
 import { apiClient } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/types";
 
 /** Recarrega o fio após o canal confirmar, sem fingir sucesso antes da resposta. */
 export function useAlterarMensagem(conversationId: string | null) {
@@ -49,15 +50,21 @@ export function useAlterarMensagem(conversationId: string | null) {
   });
   // Reenvio da mensagem que falhou, na mesma linha. Sem toast: a própria bolha
   // muda (sai de "Falhou"). A recarga é explícita porque a rede de segurança do
-  // fio só percebe mensagem nova, não troca de status.
+  // fio só percebe mensagem nova, não troca de status — e vale também na
+  // recusa: a bolha decide com o relógio do aparelho e a rota com o do
+  // servidor, e depois de um "não" a bolha tem de mostrar o estado real.
   const reenviar = useMutation({
     mutationFn: ({ id, confirmado }: { id: string; confirmado: boolean }) =>
       apiClient.post(`/api/v1/messages/${id}/retry`, confirmado ? { confirmado: true } : {}),
-    onSuccess: () => {
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["messages", conversationId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
     },
-    onError: showApiError,
+    // "Confirme antes" não é erro para a pessoa: a bolha abre a confirmação.
+    onError: (err) => {
+      if (err instanceof ApiError && err.code === "confirmacao_necessaria") return;
+      showApiError(err);
+    },
   });
   return { editar, apagar, ocultar, restaurar, reenviar };
 }

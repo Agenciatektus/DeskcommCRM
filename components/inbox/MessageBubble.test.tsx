@@ -25,6 +25,7 @@ import userEvent from "@testing-library/user-event";
 
 import { MessageBubble } from "./MessageBubble";
 import type { Message } from "@/lib/types/messaging";
+import { ApiError } from "@/lib/api/types";
 
 function msg(over: Partial<Message> = {}): Message {
   return {
@@ -462,6 +463,18 @@ describe("MessageBubble — mensagem que falhou", () => {
       viewerUserId="eu" onReenviar={vi.fn(async () => undefined)} />);
     expect(screen.queryByText("Aguardando conexão")).toBeNull();
     expect(screen.queryByRole("button", { name: "Tentar de novo" })).toBeNull();
+  });
+
+  it("se a rota pede confirmação onde a bolha viu 'nada saiu', a confirmação abre", async () => {
+    const onReenviar = vi.fn(async () => {
+      throw new ApiError(409, "confirmacao_necessaria", undefined, "r", "Confirme antes de enviar de novo.");
+    });
+    render(<MessageBubble message={msg({
+      status: "failed", error_code: "storage_sign_failed", sent_by_user_id: "eu",
+    })} viewerUserId="eu" onReenviar={onReenviar} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
+    expect(await screen.findByText(/Confira no WhatsApp do cliente antes de enviar de novo/)).toBeInTheDocument();
+    expect(onReenviar).toHaveBeenCalledWith(false);
   });
 
   it("mensagem da IA que falhou não tem botão", () => {

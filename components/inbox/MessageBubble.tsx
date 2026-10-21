@@ -23,6 +23,7 @@ import { ContactCard } from "@/components/inbox/media/ContactCard";
 import { LocationCard } from "@/components/inbox/media/LocationCard";
 import { localizacaoDaMensagem } from "@/lib/messaging/localizacao";
 import { reenvioDaMensagem } from "@/lib/messaging/reenvio";
+import { ApiError } from "@/lib/api/types";
 import { FRASES_DE_FALHA, fraseDaFalhaDeCanal } from "@/lib/channels/frases-de-falha";
 import { resolveSharedContact } from "@/lib/messaging/contact-card";
 import { lerAnuncioDaMensagem } from "@/lib/leads/atribuicao-de-anuncio";
@@ -263,7 +264,11 @@ export function MessageBubble({
     if (!onReenviar || ocupado) return;
     setOcupado(true);
     try { await onReenviar(confirmado); setConfirmandoReenvio(false); }
-    catch { /* O hook mostra o erro; a bolha continua com o botão. */ }
+    catch (err) {
+      // A rota viu "pode ter chegado" onde a bolha viu "nada saiu": pergunta antes.
+      // Os outros erros o hook mostra; a bolha continua com o botão.
+      if (err instanceof ApiError && err.code === "confirmacao_necessaria") setConfirmandoReenvio(true);
+    }
     finally { setOcupado(false); }
   }
 
