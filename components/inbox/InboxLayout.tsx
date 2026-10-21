@@ -107,6 +107,48 @@ export function colunasDoCelular(temSelecao: boolean): { lista: string; conversa
   };
 }
 
+/** A marca que o Inbox põe na entrada do histórico: conversas abertas desde a lista. */
+const MARCA_DO_INBOX = "inboxProfundidade";
+
+/**
+ * VOLTAR DESFAZ O PASSO, EM VEZ DE EMPILHAR (F2 da ADR-0006).
+ *
+ * Abrir a partir da lista empilha uma entrada com profundidade 1; abrir outra
+ * conversa a partir dessa soma 1 (o "Transferir para outro número", o aviso de
+ * número fora do ar, o j/k). Voltar anda a profundidade inteira para trás, e o
+ * `popstate` devolve a lista pelo efeito de `idNaUrl` — o gesto do sistema e o
+ * botão "‹ Conversas" passam a concordar.
+ *
+ * Sem marca (deep-link, clique no aviso, recarga) voltar troca a entrada no
+ * lugar: a pilha não cresce, e o gesto do sistema não reabre a conversa que a
+ * pessoa acabou de fechar. Uma navegação do próprio Next que descarte a marca
+ * cai neste mesmo caminho — sem laço, sem pilha crescendo.
+ *
+ * O Next 16 copia o estado interno dele para dentro do objeto passado ao
+ * `pushState` (`copyNextJsInternalHistoryState`), então a marca sobrevive.
+ * Devolve `"pelo-historico"` quando quem troca a seleção é o `popstate`.
+ */
+export function navegarNoInbox(
+  url: string,
+  de: string | null,
+  para: string | null,
+): "trocou" | "pelo-historico" {
+  const historia = window.history;
+  const marca: unknown = (historia.state as Record<string, unknown> | null)?.[MARCA_DO_INBOX];
+  const profundidade = typeof marca === "number" && marca > 0 ? marca : 0;
+  if (para !== null) {
+    const proxima = de === null ? 1 : profundidade > 0 ? profundidade + 1 : 0;
+    historia.pushState(proxima > 0 ? { [MARCA_DO_INBOX]: proxima } : null, "", url);
+    return "trocou";
+  }
+  if (profundidade > 0) {
+    historia.go(-profundidade);
+    return "pelo-historico";
+  }
+  historia.replaceState(null, "", url);
+  return "trocou";
+}
+
 /**
  * O QUE CADA ABA SIGNIFICA. Exportada porque é a definição em si — o defeito
  * que este mapa já teve (Minhas mostrando tudo que o atendente fechou) não
@@ -487,7 +529,6 @@ export function InboxLayout({
   //
   const handleSelect = useCallback((id: string | null) => {
     if (id === selectedId) return;
-    setSelectedId(id);
     // Sem isto, escolher "responder" numa conversa e trocar para outra levaria
     // a citação junto — e a resposta sairia citando mensagem de outro cliente.
     setRespondendo(null);
@@ -499,7 +540,10 @@ export function InboxLayout({
     // O ?rascunho= é da conversa que ficou para trás (ver `rascunhoVivo`).
     params.delete("rascunho");
     const query = params.toString();
-    window.history.pushState(null, "", query ? `${pathname}?${query}` : pathname);
+    // Voltar pela história deixa a troca para o `popstate` (efeito de `idNaUrl`).
+    if (navegarNoInbox(query ? `${pathname}?${query}` : pathname, selectedId, id) === "trocou") {
+      setSelectedId(id);
+    }
   }, [selectedId, searchParams, pathname]);
   const handleVisibleChange = useCallback((ids: string[]) => setVisibleIds(ids), []);
   const handleFocusReply = useCallback(() => composerRef.current?.focus(), []);
