@@ -1698,7 +1698,7 @@ nada no Storage, nada no aparelho (D4).
 
 | # | Caso | Expectativa | Resultado |
 |---|------|-------------|-----------|
-| J49.8 (B-1) | Fonte dos campos | todo `input`/`textarea`/`select` visível DENTRO da camada da conversa com `fontSize` ≥ 16px | E2E (CI) + UNIT `Composer.test` (classes) |
+| J49.8 (B-1) | Fonte dos campos | com a busca nas mensagens ABERTA, todo `input`/`textarea`/`select` visível DENTRO da camada da conversa com `fontSize` ≥ 16px; a varredura tem de incluir «Mensagem» e «Buscar nas mensagens carregadas» | E2E (CI) + UNIT `Composer.test` (classes) |
 | J49.9 (B-2) | Retorno quebra linha | «linha 1», Enter, «linha 2»: o valor tem `\n`, nenhum balão novo em 1s; «Enviar» ≥ 44×44 envia e o balão aparece | E2E (CI) + UNIT `Composer.test` (coarse, Ctrl/Cmd+Enter, ponteiro fino) |
 | J49.10 (B-3) | Alvos do composer | «Anexar», «Gravar áudio», «Enviar» ≥ 44×44; «Responder» e «Nota interna» ≥ 44 de altura; ✕ da citação ≥ 44×44; a setinha «Opções da mensagem» (a porta do Responder, 20px desenhados) acerta por `elementFromPoint` a 20px do centro nas quatro direções; o centro do «Enviar» é o próprio botão (nada flutua por cima); «Emoji» escondido | E2E (CI) |
 | J49.11 (B-4) | Anexar imagem | a prévia cabe em 390 (`x ≥ 0`, `x + largura ≤ 390`) e o envio vira balão com `<img>` | E2E (CI) |

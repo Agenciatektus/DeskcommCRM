@@ -441,9 +441,13 @@ test.describe("atender pelo celular", () => {
     await entrar(page);
     await page.goto(`/app/inbox?filter=all&id=${conversa}`);
     await esperarConversa(page);
+    // A busca nas mensagens só existe aberta: abre antes de varrer, senão o
+    // campo dela passaria sem medida.
+    await page.getByRole("button", { name: "Buscar nesta conversa", exact: true }).tap();
+    await expect(page.getByLabel("Buscar nas mensagens carregadas")).toBeVisible();
     // Só o que está DENTRO da camada da conversa: a lista e a barra de cima
     // ficam por baixo dela (invisíveis ou cobertas) e não são alcançáveis.
-    const pequenos = await fio(page).evaluate((fioEl) => {
+    const campos = await fio(page).evaluate((fioEl) => {
       let camada: HTMLElement | null = fioEl as HTMLElement;
       while (camada && getComputedStyle(camada).position !== "fixed") camada = camada.parentElement;
       return Array.from(
@@ -458,10 +462,13 @@ test.describe("atender pelo celular", () => {
         .map((el) => ({
           campo: el.getAttribute("aria-label") ?? el.getAttribute("placeholder") ?? el.tagName,
           px: parseFloat(getComputedStyle(el).fontSize),
-        }))
-        .filter((c) => c.px < 16);
+        }));
     });
-    expect(pequenos, "campo com menos de 16px amplia a página no iPhone").toEqual([]);
+    // A varredura enxergou os dois campos que se toca no dia a dia.
+    expect(campos.map((c) => c.campo)).toEqual(
+      expect.arrayContaining(["Mensagem", "Buscar nas mensagens carregadas"]),
+    );
+    expect(campos.filter((c) => c.px < 16), "campo com menos de 16px amplia a página no iPhone").toEqual([]);
   });
 
   test("B-2 a tecla de retorno quebra linha; quem envia é o botão", async ({ page }) => {
