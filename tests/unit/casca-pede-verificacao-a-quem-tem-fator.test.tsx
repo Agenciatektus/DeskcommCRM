@@ -34,7 +34,13 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/auth/server", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/auth/server")>();
-  const user = { id: U, idioma: "pt-BR", is_platform_admin: false, support: null, organizations: [] };
+  const user = {
+    id: U,
+    idioma: "pt-BR",
+    is_platform_admin: false,
+    support: null,
+    organizations: [],
+  };
   return {
     ...real,
     loadAuthUser: async () => user,
@@ -95,23 +101,21 @@ function sessao(fatores: Fatores, nivel: string | null, paRow: unknown = null) {
   vi.mocked(createClient).mockResolvedValue({
     from: () => consulta,
     auth: {
-      getUser: async () => ({
-        data: {
-          user: {
-            id: U,
-            factors:
-              fatores === "falha"
-                ? undefined
-                : fatores.map((f) => ({ factor_type: "totp", status: f.status })),
-          },
-        },
-        error: null,
-      }),
+      // A forma da falha é a do `getUser()` do auth-js: não lança, DEVOLVE o erro.
+      // `isMfaEnrolled` lê os fatores dessa mesma ida (#3122), não do `listFactors()`.
+      getUser: async () =>
+        fatores === "falha"
+          ? { data: { user: null }, error: new Error("GoTrue indisponível") }
+          : {
+              data: {
+                user: {
+                  id: U,
+                  factors: fatores.map((f) => ({ factor_type: "totp", status: f.status })),
+                },
+              },
+              error: null,
+            },
       mfa: {
-        listFactors: async () =>
-          fatores === "falha"
-            ? { data: null, error: new Error("GoTrue indisponível") }
-            : { data: { totp: fatores }, error: null },
         getAuthenticatorAssuranceLevel: async () => ({
           data: nivel === null ? null : { currentLevel: nivel },
           error: null,
@@ -277,14 +281,16 @@ describe("/admin: a mesma regra, com a política da plataforma desligada", () =>
     await expect(guarda()).rejects.toMatchObject(desafio("/admin"));
   });
 
-  it.each(["//evil.example/admin", "https://evil.example/admin", "/admin/\\evil.example", "/admin/x\ty"])(
-    "x-pathname que não veio do proxy (%j) → o destino é /admin",
-    async (forjado) => {
-      h.semProxy = { "x-pathname": forjado };
-      sessao([{ status: "verified" }], "aal1", linha);
-      await expect(guarda()).rejects.toMatchObject(desafio("/admin"));
-    },
-  );
+  it.each([
+    "//evil.example/admin",
+    "https://evil.example/admin",
+    "/admin/\\evil.example",
+    "/admin/x\ty",
+  ])("x-pathname que não veio do proxy (%j) → o destino é /admin", async (forjado) => {
+    h.semProxy = { "x-pathname": forjado };
+    sessao([{ status: "verified" }], "aal1", linha);
+    await expect(guarda()).rejects.toMatchObject(desafio("/admin"));
+  });
 
   it("controle: sem fator → entra", async () => {
     sessao([], "aal1", linha);
