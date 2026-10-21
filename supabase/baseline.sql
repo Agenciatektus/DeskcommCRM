@@ -57668,7 +57668,7 @@ begin
 end;$$;
 notify pgrst,'reload schema';
 
--- ---- dispositivo confiável da MFA (migration 0707) ----
+-- ---- dispositivo confiável da MFA (migration 0723) ----
 create table if not exists public.mfa_trusted_devices (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
