@@ -236,17 +236,41 @@ const DESCRICOES: Record<string, string> = {
   favicon: "sem ícone na aba do navegador",
 };
 
-export function descreverProblema(codigo: string): string {
-  if (codigo.startsWith("http-")) return `o site responde com erro (${codigo.slice("http-".length)})`;
+/** Tradutor da tela (o `t()` do idioma). Ausente = português, o texto que vai ao agente. */
+export type TradutorDeTexto = (texto: string) => string;
+const SEM_TRADUCAO: TradutorDeTexto = (texto) => texto;
+
+/**
+ * Troca os marcadores `{nome}` de um texto JÁ traduzido — o padrão do
+ * dicionário: `t("Nota {nota} ...")` e só depois a troca. `split/join`, e não
+ * `replace`, porque o valor pode trazer `$&`, que o `replace` interpretaria.
+ */
+export function trocarMarcadores(texto: string, valores: Record<string, string | number>): string {
+  let saida = texto;
+  for (const [nome, valor] of Object.entries(valores)) saida = saida.split(`{${nome}}`).join(String(valor));
+  return saida;
+}
+
+/**
+ * `t` é só da TELA. O prompt (estratégia, campo `Auditoria` dos dados) chama
+ * sem ele e recebe o português de sempre, byte a byte.
+ */
+export function descreverProblema(codigo: string, t: TradutorDeTexto = SEM_TRADUCAO): string {
+  if (codigo.startsWith("http-"))
+    return trocarMarcadores(t("o site responde com erro ({codigo})"), { codigo: codigo.slice("http-".length) });
   if (codigo.startsWith("construtor-"))
-    return `feito em construtor pronto (${codigo.slice("construtor-".length)}) — mesma cara de milhares de outros`;
+    return trocarMarcadores(t("feito em construtor pronto ({nome}) — mesma cara de milhares de outros"), {
+      nome: codigo.slice("construtor-".length),
+    });
   if (codigo.startsWith("sem-atualizacao-desde-"))
-    return `parado desde ${codigo.slice("sem-atualizacao-desde-".length)}`;
+    return trocarMarcadores(t("parado desde {data}"), { data: codigo.slice("sem-atualizacao-desde-".length) });
   if (codigo.startsWith("falta-")) {
     const item = codigo.slice("falta-".length);
-    return DESCRICOES[item] ?? `sem ${item}`;
+    return Object.hasOwn(DESCRICOES, item)
+      ? t(DESCRICOES[item] as string)
+      : trocarMarcadores(t("sem {item}"), { item });
   }
-  return DESCRICOES[codigo] ?? codigo;
+  return Object.hasOwn(DESCRICOES, codigo) ? t(DESCRICOES[codigo] as string) : codigo;
 }
 
 /**

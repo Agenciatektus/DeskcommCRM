@@ -85,11 +85,11 @@ export function AuditoriaDoCandidato({
     );
   }
   const temInstagram = /instagram/i.test((data.socials ?? []).join(","));
-  const score = pontuarCandidato(data.rating, data.reviews, site.classe, ofertas[0] ?? "site", site.provisorio ?? false);
+  const score = pontuarCandidato(data.rating, data.reviews, site.classe, ofertas[0] ?? "site", site.provisorio ?? false, t);
   // Resumo de UMA linha: classe + até 2 problemas. O motivo do score acompanha
   // só quando diz algo além do veredito (senão "sem site próprio" repete).
   const rotulo = rotuloDaClasse(site.classe, t);
-  const veredito = [rotulo, ...site.problemas.slice(0, 2).map(descreverProblema)].join(" · ");
+  const veredito = [rotulo, ...site.problemas.slice(0, 2).map((p) => descreverProblema(p, t))].join(" · ");
   const mostraMotivo = score.motivo !== rotulo && score.motivo.toLowerCase() !== rotulo.toLowerCase();
   const auditoria = (
     <AuditoriaDoSite

@@ -8,7 +8,7 @@
  * o que o humano lê antes (objeções) fica na tela, nunca no prompt.
  */
 import type { ClasseDeSite, ItemDoRaioX, RaioXDoSite } from "@/lib/prospecting/site-classify";
-import { descreverProblema } from "@/lib/prospecting/site-classify";
+import { descreverProblema, trocarMarcadores, type TradutorDeTexto } from "@/lib/prospecting/site-classify";
 import type { OfertaDaCampanha } from "./schema";
 import type { PreviaSalva } from "./previa";
 export type { OfertaDaCampanha } from "./schema";
@@ -99,34 +99,48 @@ export function normalizarNicho(nicho: string): string {
     .trim();
 }
 
-export function vocabularioDoNicho(nicho: string, sobrescrita?: Record<string, string> | null): string {
+/** Sem tradutor = português: é o que o agente recebe. A tela passa o `t()` do idioma. */
+const SEM_TRADUCAO: TradutorDeTexto = (texto) => texto;
+
+/** A sobrescrita é texto da organização e não passa pelo `t`; o mapa base passa. */
+export function vocabularioDoNicho(
+  nicho: string,
+  sobrescrita?: Record<string, string> | null,
+  t: TradutorDeTexto = SEM_TRADUCAO,
+): string {
   const chave = normalizarNicho(nicho);
   if (sobrescrita) {
     for (const [termo, vocabulario] of Object.entries(sobrescrita)) {
       if (chave.includes(normalizarNicho(termo))) return vocabulario;
     }
   }
-  for (const [prefixo, vocabulario] of Object.entries(VOCABULARIO_POR_NICHO)) {
-    if (chave.includes(prefixo)) return vocabulario;
+  for (const prefixo of Object.keys(VOCABULARIO_POR_NICHO)) {
+    if (chave.includes(prefixo)) return t(VOCABULARIO_POR_NICHO[prefixo] as string);
   }
-  return chave ? `clientes de ${nicho.trim()}` : "clientes novos";
+  return chave ? trocarMarcadores(t("clientes de {nicho}"), { nicho: nicho.trim() }) : t("clientes novos");
 }
 
-function ganchoDeReputacao(nota: number | null, avaliacoes: number | null): string {
+function ganchoDeReputacao(nota: number | null, avaliacoes: number | null, t: TradutorDeTexto): string {
   const n = nota ?? 0;
   const total = avaliacoes ?? 0;
   if (n >= 4.8 && total >= 50)
-    return `Nota ${n} com ${total} avaliações: reputação de sobra e negócio estabelecido — colhe resultado rápido.`;
+    return trocarMarcadores(
+      t("Nota {nota} com {total} avaliações: reputação de sobra e negócio estabelecido — colhe resultado rápido."),
+      { nota: n, total },
+    );
   if (n >= 4.5 && total >= 10)
-    return `Nota ${n} com ${total} avaliações: a reputação já existe, só não trabalha fora do Maps.`;
-  if (n > 0) return `Nota ${n} no Google — use como abertura, nunca como crítica.`;
-  return "Sem avaliações visíveis — posicione presença digital como começo, não conserto.";
+    return trocarMarcadores(
+      t("Nota {nota} com {total} avaliações: a reputação já existe, só não trabalha fora do Maps."),
+      { nota: n, total },
+    );
+  if (n > 0) return trocarMarcadores(t("Nota {nota} no Google — use como abertura, nunca como crítica."), { nota: n });
+  return t("Sem avaliações visíveis — posicione presença digital como começo, não conserto.");
 }
 
-function juntarProblemas(problemas: string[]): string | null {
+function juntarProblemas(problemas: string[], t: TradutorDeTexto): string | null {
   const texto = problemas
     .filter((p) => !p.startsWith("falta-"))
-    .map(descreverProblema)
+    .map((p) => descreverProblema(p, t))
     .slice(0, 3)
     .join("; ");
   return texto || null;
@@ -136,24 +150,28 @@ function juntarProblemas(problemas: string[]): string | null {
  * Melhor ângulo = auditoria × primeira oferta aplicável ao caso.
  * `ofertas[0]` (primária) decide empates; default `["site"]` = comportamento atual.
  */
-export function montarEstrategia(entrada: EntradaDaEstrategia): EstrategiaDoLead {
+export function montarEstrategia(entrada: EntradaDaEstrategia, t: TradutorDeTexto = SEM_TRADUCAO): EstrategiaDoLead {
+  const objecoesTraduzidas = (lista: ObjecaoComResposta[]): ObjecaoComResposta[] =>
+    lista.map((o) => ({ objecao: t(o.objecao), resposta: t(o.resposta) }));
   const ofertas: OfertaDaCampanha[] =
     entrada.ofertas.length > 0 ? entrada.ofertas : ["site"];
   // Provisório primeiro: verificação inconclusiva não gera ângulo de conserto
   // (vender em cima de timeout seria queimar o lead com gancho falso).
   if (entrada.provisorio) {
     return {
-      cenario: "Verificação pendente",
-      angulo:
+      cenario: t("Verificação pendente"),
+      angulo: t(
         "A verificação do site foi inconclusiva (instabilidade de rede, não defeito comprovado). Sem gancho até a reverificação confirmar — abordar citando queda seria mentir com dados.",
+      ),
       ganchos: [],
       objecoes: [],
-      proximoPasso:
+      proximoPasso: t(
         "Aguardar a reverificação automática; se congelar como fora do ar, a estratégia de cortesia assume.",
+      ),
     };
   }
-  const vocabulario = vocabularioDoNicho(entrada.nicho, entrada.sobrescritaVocabulario ?? null);
-  const ganchos: string[] = [ganchoDeReputacao(entrada.nota, entrada.numAvaliacoes)];
+  const vocabulario = vocabularioDoNicho(entrada.nicho, entrada.sobrescritaVocabulario ?? null, t);
+  const ganchos: string[] = [ganchoDeReputacao(entrada.nota, entrada.numAvaliacoes, t)];
   const faltas: ItemDoRaioX[] = entrada.checklist?.falta ?? [];
 
   let cenario: string;
@@ -165,9 +183,11 @@ export function montarEstrategia(entrada: EntradaDaEstrategia): EstrategiaDoLead
 
   if (entrada.classe === "site-ok") {
     if (querAutomacao && volumeAlto) {
-      cenario = "Site ok, demanda alta";
-      angulo =
-        `Site em ordem e movimento alto: a dor não é vitrine, é atendimento — mensagens sem resposta e ${vocabulario} perdido no volume. O ângulo é automação (fila, resposta imediata, follow-up automático), não site.`;
+      cenario = t("Site ok, demanda alta");
+      angulo = trocarMarcadores(
+        t("Site em ordem e movimento alto: a dor não é vitrine, é atendimento — mensagens sem resposta e {vocabulario} perdido no volume. O ângulo é automação (fila, resposta imediata, follow-up automático), não site."),
+        { vocabulario },
+      );
       objecoes = [
         {
           objecao: "Meu atendimento dá conta",
@@ -176,51 +196,67 @@ export function montarEstrategia(entrada: EntradaDaEstrategia): EstrategiaDoLead
         },
       ];
       ganchos.push(
-        "Volume alto + site ok: pergunte quantas mensagens ficam sem resposta por dia — a conta se vende sozinha.",
+        t("Volume alto + site ok: pergunte quantas mensagens ficam sem resposta por dia — a conta se vende sozinha."),
       );
     } else {
       return {
-        cenario: "Site ok",
-        angulo:
+        cenario: t("Site ok"),
+        angulo: t(
           "Sem problema técnico à vista para vender conserto. Se abordar, o ângulo muda para melhoria de resultado (mais contatos, melhor posição) — caso contrário, priorize os mais quentes.",
+        ),
         ganchos,
         objecoes: [],
-        proximoPasso:
+        proximoPasso: t(
           "Prioridade baixa: compete com sem-site e site ruim na fila. Aborde só se a região ou o nicho for estratégico.",
+        ),
       };
     }
   } else if (entrada.classe === "agregador" || entrada.classe === "sem-site") {
-    cenario = entrada.classe === "agregador" ? "Só rede social" : "Sem site";
+    cenario = t(entrada.classe === "agregador" ? "Só rede social" : "Sem site");
     angulo =
-      `Negócio bem avaliado mas invisível para quem pesquisa no Google fora do Maps. Cada pesquisa sem resultado é ${vocabulario} indo para o concorrente que aparece. ` +
-      (entrada.temInstagram
-        ? "O Instagram é ativo — posicione o site como o complemento que captura quem pesquisa, nunca como substituto da rede."
-        : "Presença digital quase zero: hoje só chega quem indica. Um site abre o canal de quem pesquisa por conta própria.");
+      trocarMarcadores(
+        t("Negócio bem avaliado mas invisível para quem pesquisa no Google fora do Maps. Cada pesquisa sem resultado é {vocabulario} indo para o concorrente que aparece."),
+        { vocabulario },
+      ) +
+      " " +
+      t(
+        entrada.temInstagram
+          ? "O Instagram é ativo — posicione o site como o complemento que captura quem pesquisa, nunca como substituto da rede."
+          : "Presença digital quase zero: hoje só chega quem indica. Um site abre o canal de quem pesquisa por conta própria.",
+      );
     objecoes = OBJETOES_SEM_SITE;
   } else if (entrada.classe === "fora-do-ar") {
-    cenario = "Site fora do ar";
-    angulo =
-      "O site NÃO ABRE — quem clica encontra erro. Abra como AVISO de cortesia (gera gratidão, não parece venda) e ofereça reconstruir rápido. Maior urgência, melhor resposta.";
-    ganchos.push("Diga que tentou acessar e está fora do ar — você está avisando, não vendendo. A oferta vem depois da reação.");
+    cenario = t("Site fora do ar");
+    angulo = t(
+      "O site NÃO ABRE — quem clica encontra erro. Abra como AVISO de cortesia (gera gratidão, não parece venda) e ofereça reconstruir rápido. Maior urgência, melhor resposta.",
+    );
+    ganchos.push(
+      t("Diga que tentou acessar e está fora do ar — você está avisando, não vendendo. A oferta vem depois da reação."),
+    );
   } else if (entrada.classe === "ssl-invalido" || entrada.problemas.includes("sem-https") || entrada.problemas.includes("http-sem-redirecionar")) {
-    cenario = "Site inseguro";
-    angulo =
-      "O navegador marca o site como “não seguro” — espanta cliente na hora e derruba a posição no Google. A reputação construída está sendo minada por um cadeado vermelho.";
-    ganchos.push("Mande um print do aviso do navegador — é visual, indiscutível, e ninguém quer isso na marca.");
+    cenario = t("Site inseguro");
+    angulo = t(
+      "O navegador marca o site como “não seguro” — espanta cliente na hora e derruba a posição no Google. A reputação construída está sendo minada por um cadeado vermelho.",
+    );
+    ganchos.push(t("Mande um print do aviso do navegador — é visual, indiscutível, e ninguém quer isso na marca."));
   } else if (entrada.problemas.includes("nao-mobile")) {
-    cenario = "Site não-mobile";
-    angulo =
-      `O site quebra no celular — e quase toda pesquisa local é no celular. O site atende bem quem quase não existe (desktop) e falha onde está ${vocabulario}.`;
-    ganchos.push("Sugira abrirem o próprio site no celular agora — a experiência ruim se vende sozinha.");
+    cenario = t("Site não-mobile");
+    angulo = trocarMarcadores(
+      t("O site quebra no celular — e quase toda pesquisa local é no celular. O site atende bem quem quase não existe (desktop) e falha onde está {vocabulario}."),
+      { vocabulario },
+    );
+    ganchos.push(t("Sugira abrirem o próprio site no celular agora — a experiência ruim se vende sozinha."));
   } else if (entrada.problemas.includes("lento")) {
-    cenario = "Site lento";
-    angulo =
-      "Funciona, mas demora tanto que parte dos visitantes desiste antes de ver qualquer coisa. Não é trocar por vaidade — é parar de perder quem já clicou.";
-    ganchos.push("Sugira abrir no 4G sem Wi-Fi; com a nota do PageSpeed em mãos, fecha a questão.");
+    cenario = t("Site lento");
+    angulo = t(
+      "Funciona, mas demora tanto que parte dos visitantes desiste antes de ver qualquer coisa. Não é trocar por vaidade — é parar de perder quem já clicou.",
+    );
+    ganchos.push(t("Sugira abrir no 4G sem Wi-Fi; com a nota do PageSpeed em mãos, fecha a questão."));
   } else if (entrada.problemas.some((p) => p.startsWith("construtor-"))) {
-    cenario = "Site de construtor";
-    angulo =
-      "Modelo pronto: funciona, mas igual a milhares de outros, sem a credibilidade que a reputação merece. Negócio com nota alta merece site próprio, com cara própria.";
+    cenario = t("Site de construtor");
+    angulo = t(
+      "Modelo pronto: funciona, mas igual a milhares de outros, sem a credibilidade que a reputação merece. Negócio com nota alta merece site próprio, com cara própria.",
+    );
     objecoes = [
       {
         objecao: "O construtor me atende",
@@ -233,22 +269,27 @@ export function montarEstrategia(entrada: EntradaDaEstrategia): EstrategiaDoLead
           "Continua igual — painel simples para editar o que quiser. A diferença está na base: design exclusivo e estrutura que o Google leva a sério.",
       },
     ];
-    ganchos.push("Cite que dá para notar o modelo pronto — e emende com a reputação: “um negócio com essa nota merece um site à altura”.");
+    ganchos.push(
+      t("Cite que dá para notar o modelo pronto — e emende com a reputação: “um negócio com essa nota merece um site à altura”."),
+    );
   } else {
-    cenario = "Site com problemas";
-    angulo =
-      "Site existe mas custa clientes. Aborde como diagnóstico: aponte o problema em linguagem leiga e ofereça a reformulação como solução direta.";
-    const detalhe = juntarProblemas(entrada.problemas);
-    if (detalhe) ganchos.push(`Problemas detectados: ${detalhe}.`);
+    cenario = t("Site com problemas");
+    angulo = t(
+      "Site existe mas custa clientes. Aborde como diagnóstico: aponte o problema em linguagem leiga e ofereça a reformulação como solução direta.",
+    );
+    const detalhe = juntarProblemas(entrada.problemas, t);
+    if (detalhe) ganchos.push(trocarMarcadores(t("Problemas detectados: {detalhe}."), { detalhe }));
   }
 
   if (faltas.length > 0) {
     ganchos.push(
-      `Faltas concretas no site: ${faltas.slice(0, 3).join(", ")} — cite uma como exemplo específico.`,
+      trocarMarcadores(t("Faltas concretas no site: {faltas} — cite uma como exemplo específico."), {
+        faltas: faltas.slice(0, 3).join(", "),
+      }),
     );
   }
   if (entrada.temInstagram && entrada.classe !== "agregador" && entrada.classe !== "sem-site") {
-    ganchos.push("O Instagram pode estar mais atualizado que o site — use isso a favor do diagnóstico.");
+    ganchos.push(t("O Instagram pode estar mais atualizado que o site — use isso a favor do diagnóstico."));
   }
 
   // `status` é o de `prospecting_candidates` ('new','queued','sending','sent',
@@ -258,14 +299,19 @@ export function montarEstrategia(entrada: EntradaDaEstrategia): EstrategiaDoLead
   // envio convidaria a abordar quem foi barrado.
   const proximoPasso =
     entrada.followUpsEnviados > 0
-      ? `Já foram ${entrada.followUpsEnviados} follow-up(s): gere a próxima copy trazendo um elemento NOVO (prazo, exemplo, diagnóstico) — repetir o argumento queima o lead.`
+      ? trocarMarcadores(
+          t("Já foram {n} follow-up(s): gere a próxima copy trazendo um elemento NOVO (prazo, exemplo, diagnóstico) — repetir o argumento queima o lead."),
+          { n: entrada.followUpsEnviados },
+        )
       : entrada.status === "sent"
-        ? "Lead contatado sem resposta: follow-up leve de lembrete, com pedido de ação fechado."
+        ? t("Lead contatado sem resposta: follow-up leve de lembrete, com pedido de ação fechado.")
         : ["", "skipped", "failed"].includes(entrada.status)
           ? ""
-          : "Gere a prévia da abordagem, revise com seu tom e envie pelo WhatsApp; ao responder, siga com a estratégia acima. Depois marque como contatado.";
+          : t(
+              "Gere a prévia da abordagem, revise com seu tom e envie pelo WhatsApp; ao responder, siga com a estratégia acima. Depois marque como contatado.",
+            );
 
-  return { cenario, angulo, ganchos, objecoes, proximoPasso };
+  return { cenario, angulo, ganchos, objecoes: objecoesTraduzidas(objecoes), proximoPasso };
 }
 
 /**
@@ -339,6 +385,7 @@ export function pontuarCandidato(
   classe: ClasseDeSite,
   ofertaPrimaria: OfertaDaCampanha = "site",
   provisorio = false,
+  t: TradutorDeTexto = SEM_TRADUCAO,
 ): Pontuacao {
   const pontosNota = Math.max(0, Math.min((nota ?? 0) - 4.0, 1.0)) * 40;
   const faixa = PESO_AVALIACOES[ofertaPrimaria] ?? PESO_AVALIACOES.site;
@@ -349,14 +396,23 @@ export function pontuarCandidato(
   const pontosSite = provisorio ? 18 : (pesosSite[classe] ?? 0);
   const valor = Math.round(pontosNota + pontosAvaliacoes + pontosSite);
   const parcelas: Array<[number, string]> = [
-    [pontosNota, "nota alta"],
-    [pontosAvaliacoes, "volume de avaliações"],
-    [pontosSite, classe === "site-ok" ? "site em ordem" : classe === "agregador" || classe === "sem-site" ? "sem site próprio" : "site com problemas"],
+    [pontosNota, t("nota alta")],
+    [pontosAvaliacoes, t("volume de avaliações")],
+    [
+      pontosSite,
+      t(
+        classe === "site-ok"
+          ? "site em ordem"
+          : classe === "agregador" || classe === "sem-site"
+            ? "sem site próprio"
+            : "site com problemas",
+      ),
+    ],
   ];
   parcelas.sort((a, b) => b[0] - a[0]);
   const motivoBase =
-    parcelas[0]![0] > 0 ? `${parcelas[0]![1]}${parcelas[1]![0] > 0 ? ` + ${parcelas[1]![1]}` : ""}` : "sem sinais positivos";
-  return { valor, motivo: provisorio ? `${motivoBase} · verificação pendente` : motivoBase };
+    parcelas[0]![0] > 0 ? `${parcelas[0]![1]}${parcelas[1]![0] > 0 ? ` + ${parcelas[1]![1]}` : ""}` : t("sem sinais positivos");
+  return { valor, motivo: provisorio ? `${motivoBase} · ${t("verificação pendente")}` : motivoBase };
 }
 
 /**

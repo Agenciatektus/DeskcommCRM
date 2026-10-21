@@ -55,20 +55,23 @@ export function AuditoriaDoSite({
   const verificadoEm = site.verificado_em ? new Date(site.verificado_em) : null;
   const tem: ItemDoRaioX[] = (site.checklist?.tem ?? []).filter((i): i is ItemDoRaioX => i in ROTULOS_DO_CHECKLIST);
   const falta: ItemDoRaioX[] = (site.checklist?.falta ?? []).filter((i): i is ItemDoRaioX => i in ROTULOS_DO_CHECKLIST);
-  const estrategia = montarEstrategia({
-    classe: site.classe,
-    problemas: site.problemas,
-    checklist: { tem, falta },
-    nota,
-    numAvaliacoes,
-    temInstagram,
-    ofertas,
-    nicho,
-    sobrescritaVocabulario: sobrescritaVocabulario ?? null,
-    provisorio: site.provisorio ?? false,
-    status,
-    followUpsEnviados: 0,
-  });
+  const estrategia = montarEstrategia(
+    {
+      classe: site.classe,
+      problemas: site.problemas,
+      checklist: { tem, falta },
+      nota,
+      numAvaliacoes,
+      temInstagram,
+      ofertas,
+      nicho,
+      sobrescritaVocabulario: sobrescritaVocabulario ?? null,
+      provisorio: site.provisorio ?? false,
+      status,
+      followUpsEnviados: 0,
+    },
+    t,
+  );
   return (
     <div className="mt-3 space-y-3 border-t pt-3">
       <div>
@@ -86,7 +89,7 @@ export function AuditoriaDoSite({
       {site.problemas.length > 0 && (
         <ul className="list-disc space-y-1 pl-4 text-xs">
           {site.problemas.map((problema) => (
-            <li key={problema}>{descreverProblema(problema)}</li>
+            <li key={problema}>{descreverProblema(problema, t)}</li>
           ))}
         </ul>
       )}
