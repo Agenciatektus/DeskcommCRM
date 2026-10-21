@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useT } from "@/hooks/i18n/useT";
 
 import { Pause, Play } from "@/lib/ui/icons";
@@ -16,6 +16,9 @@ const CONVERTIVEIS = new Set(["audio/ogg", "audio/webm", "audio/opus"]);
 function convertivel(mime: string | null | undefined): boolean {
   return CONVERTIVEIS.has((mime ?? "").split(";")[0]!.trim().toLowerCase());
 }
+
+/** O que o aparelho toca não muda enquanto a página vive: não há a que se inscrever. */
+const semInscricao = () => () => {};
 
 function fmt(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -49,15 +52,20 @@ export function AudioPlayer({ messageId, isOutbound, src, mime }: Props) {
   // Modo conversão (F2): o aparelho não toca este formato. O `<audio>` fica sem
   // `src` até o toque, e o toque toca a versão AAC por `blob:` — em memória,
   // nunca em Cache Storage nem IndexedDB (D4 da ADR-0006).
-  const [conversao, setConversao] = useState(false);
+  const [erroLigouConversao, setErroLigouConversao] = useState(false);
   const blobRef = useRef<string | null>(null);
   const podeConverter = !src && convertivel(mime);
-
-  // No efeito, e não no render: o servidor não sabe o que o aparelho toca.
-  useEffect(() => {
-    const el = audioRef.current;
-    if (el && podeConverter && mime && el.canPlayType(mime) === "") setConversao(true);
-  }, [podeConverter, mime]);
+  // O que o aparelho responde para este mime. `null` no servidor e na
+  // hidratação: ali ninguém sabe o que o aparelho toca, e o `<audio>` nasce SEM
+  // src. Com src no primeiro commit, o WebKit já baixa o ogg, falha e guarda o
+  // erro no elemento — e o `play()` do toque é recusado sem destravá-lo:
+  // viravam dois toques.
+  const resposta = useSyncExternalStore(
+    semInscricao,
+    () => (podeConverter && mime ? document.createElement("audio").canPlayType(mime) : "nao-se-aplica"),
+    () => null,
+  );
+  const conversao = erroLigouConversao || resposta === "";
 
   useEffect(
     () => () => {
@@ -76,7 +84,7 @@ export function AudioPlayer({ messageId, isOutbound, src, mime }: Props) {
     // conversão UMA vez. Indisponível só quando a cópia convertida também
     // falha, ou quando não há o que converter.
     const onError = () => {
-      if (podeConverter && !(blobRef.current && el.src === blobRef.current)) setConversao(true);
+      if (podeConverter && !(blobRef.current && el.src === blobRef.current)) setErroLigouConversao(true);
       else setFailed(true);
     };
     el.addEventListener("timeupdate", onTime);
@@ -153,7 +161,11 @@ export function AudioPlayer({ messageId, isOutbound, src, mime }: Props) {
     <div className="flex w-60 items-center gap-2 py-1">
       {/* Em conversão o src sai do render e é posto à mão (blob:). Por isso o
           React nunca mais o toca: regravar o mesmo src recarregaria o áudio. */}
-      <audio ref={audioRef} src={conversao ? undefined : (src ?? mediaSrc(messageId))} preload="metadata" />
+      <audio
+        ref={audioRef}
+        src={resposta === null || conversao ? undefined : (src ?? mediaSrc(messageId))}
+        preload="metadata"
+      />
       <button
         type="button"
         aria-label={playing ? t("Pausar áudio") : t("Reproduzir áudio")}

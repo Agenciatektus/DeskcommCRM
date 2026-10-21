@@ -144,6 +144,28 @@ describe("áudio que o aparelho não toca", () => {
     expect(revogar).toHaveBeenCalledWith("blob:http://localhost/aac-1");
   });
 
+  it("o ogg nunca chega ao <audio>, nem no primeiro commit (antes do efeito decidir)", async () => {
+    // O `waitFor` acima confere DEPOIS do efeito. Aqui a sonda é o próprio
+    // `setAttribute`: um `src` gravado por um instante já faz o WebKit baixar,
+    // falhar e guardar o erro no elemento — e o toque seguinte não destrava.
+    aparelhoToca("");
+    const gravados: string[] = [];
+    const original = Element.prototype.setAttribute;
+    vi.spyOn(Element.prototype, "setAttribute").mockImplementation(function (
+      this: Element,
+      nome: string,
+      valor: string,
+    ) {
+      if (this.tagName === "AUDIO" && nome === "src") gravados.push(valor);
+      return original.call(this, nome, valor);
+    });
+    const { container } = render(
+      <AudioPlayer messageId="m3" isOutbound={false} mime="audio/ogg; codecs=opus" />,
+    );
+    await waitFor(() => expect(container.querySelector("audio")).not.toBeNull());
+    expect(gravados).toEqual([]);
+  });
+
   it("aparelho que toca: nunca chama fetch e usa a rota de sempre", async () => {
     aparelhoToca("probably");
     const fetchMock = fetchDoAac();
