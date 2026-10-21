@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { normalizarTags } from "@/lib/contacts/tag-normalizada";
+import { camposQueMudaram, mensagemDaRecusa, recusasDePadrao } from "@/lib/leads/padrao-do-campo";
 import { contactPatchSchemaDoPais, type ContactPatch } from "@/lib/schemas/contacts";
 import { useUpdateContact } from "@/hooks/contacts/useUpdateContact";
 import { CustomFieldsEditor, type CustomFieldDef } from "@/components/contacts/CustomFieldsEditor";
@@ -102,6 +103,31 @@ export function EditContactDialog({
 
   async function onSubmit(values: FormShape) {
     setServerError(null);
+
+    // ── O PADRÃO (#2730) ──────────────────────────────────────────────────
+    //
+    // A MESMA régua do servidor, mais um portão aqui: o `CustomFieldsEditor`
+    // já avisa conforme se digita, mas o submit é o último degrau antes do 422
+    // da API — e a frase que aparece é a DO CAMPO (`mensagem_padrao`), não
+    // "dados inválidos". Sem `padrao` a lista vem vazia: o campo livre segue
+    // livre, byte a byte, e nada disto acontece.
+    //
+    // ⚠️ Julga o DIFF, não o mapa que o formulário carrega (#2814). O
+    // `CustomFieldsEditor` devolve o `custom_fields` INTEIRO a cada tecla — o
+    // campo escondido por `mostrar_quando` viaja junto com o valor que ele já
+    // tinha — e o portão recusava a gravação por um campo que a pessoa nem
+    // tocou: trocar só o nome devolvia o erro de `idades`. Mesma conta do
+    // servidor (`camposQueMudaram` → `camposAlterados`), mesmo estado anterior
+    // (o contato que o diálogo recebeu para abrir).
+    const recusas = recusasDePadrao(
+      customFieldDefs,
+      camposQueMudaram(values.custom_fields, contact.custom_fields),
+    );
+    if (recusas.length > 0) {
+      setServerError(mensagemDaRecusa(recusas[0]!, t));
+      return;
+    }
+
     // O texto que ficou NO CAMPO sem Enter não pode sumir ao salvar (defeito
     // medido na tela do PR #2831): quem digita "cliente diamante", ou uma
     // etiqueta que já existe, e clica em Salvar espera a etiqueta gravada. O
@@ -196,7 +222,11 @@ export function EditContactDialog({
               />
             </div>
           )}
-          {serverError && <p className="text-sm text-error-fg">{serverError}</p>}
+          {serverError && (
+            <p role="alert" className="text-sm text-error-fg">
+              {serverError}
+            </p>
+          )}
           <DialogFooter>
             <Button
               type="button"

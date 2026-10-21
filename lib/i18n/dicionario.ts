@@ -32,11 +32,15 @@
  * do que estava.
  */
 import type { Idioma } from "./idiomas";
+import { TEXTOS_AGENDA_CONFIGURACAO } from "./agenda-configuracao";
+import { TEXTOS_AGENDA_SERVICOS } from "./agenda-servicos";
 
 /** `pt-BR` não aparece: é a chave. Só o que DIFERE precisa de linha. */
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  ...TEXTOS_AGENDA_SERVICOS,
+  ...TEXTOS_AGENDA_CONFIGURACAO,
   "Há um ajuste proporcional esperando pagamento. Escolher outro plano cancela esse ajuste.": { es: "Hay un ajuste proporcional esperando el pago. Elegir otro plan cancela ese ajuste." },
   "Estamos preparando o ajuste proporcional. Aguarde alguns segundos e tente novamente.": { es: "Estamos preparando el ajuste proporcional. Espera unos segundos e inténtalo de nuevo." },
   "Estamos preparando o ajuste proporcional. Aguarde alguns segundos.": { es: "Estamos preparando el ajuste proporcional. Espera unos segundos." },
@@ -2809,6 +2813,15 @@ export const DICIONARIO: Traducoes = {
   "Aprovados no WhatsApp": { es: "Aprobadas en WhatsApp" },
   "Depois de 24 horas sem resposta do cliente, só um modelo aprovado no WhatsApp chega até ele.": {
     es: "Después de 24 horas sin respuesta del cliente, solo le llega una plantilla aprobada en WhatsApp.",
+  },
+  "De onde sai cada variável": { es: "De dónde sale cada variable" },
+  "no cabeçalho": { es: "en el encabezado" },
+  "Escolha a origem": { es: "Elegí el origen" },
+  "Primeiro nome do contato": { es: "Primer nombre del contacto" },
+  "Outro campo do negócio": { es: "Otro campo del negocio" },
+  "Chave do campo do negócio": { es: "Clave del campo del negocio" },
+  "Se faltar a origem de alguma variável, ou se o dado estiver vazio no contato, o passo é pulado e o motivo aparece na linha do tempo.": {
+    es: "Si falta el origen de alguna variable, o si el dato está vacío en el contacto, el paso se salta y el motivo aparece en la línea de tiempo.",
   },
   "Modelo de mensagem": { es: "Plantilla de mensaje" },
   "Nota (opcional)": { es: "Nota (opcional)" },
@@ -16262,6 +16275,16 @@ export const DICIONARIO: Traducoes = {
   "é maior que": { es: "es mayor que" },
   "Escondido, o campo não aparece no formulário nem é validado como obrigatório, e o valor já gravado continua no registro.": {
     es: "Oculto, el campo no aparece en el formulario ni se valida como obligatorio, y el valor ya guardado sigue en el registro.",
+  },
+  // #2730 — validação de formato em campo de texto: a frase do CAMPO na tela,
+  // na API e no erro de ensino da IA. `padrao`/`mensagem_padrao` são dado do
+  // dono do funil; estas duas abaixo são as da CASA, para quando ele não deu a
+  // dele (ou quando a regex dele nem compila).
+  "Valor fora do formato esperado para este campo.": {
+    es: "Valor fuera del formato esperado para este campo.",
+  },
+  "Padrão inválido configurado neste campo: a gravação está bloqueada até a correção.": {
+    es: "Patrón inválido configurado en este campo: la escritura queda bloqueada hasta corregirlo.",
   },
   // ─── Alarme de SLA ao encarregado (lib/lgpd/sla-alarm.ts, issue #2347) ─────
   // O e-mail fala a LÍNGUA de quem recebe, que vem do PAÍS (`PerfilDoPais.idioma`):
