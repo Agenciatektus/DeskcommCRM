@@ -15,12 +15,14 @@ import { credenciaisSupabaseDeTeste } from "../../scripts/lib/env-de-teste";
  * medida é por ferramenta (`getBoundingClientRect`, `getComputedStyle`,
  * `elementFromPoint`), nunca a olho: `toBeVisible()` passa em elemento coberto.
  *
- *   A-1  a conversa ocupa a tela inteira e cobre a barra de cima e a de abas;
+ *   A-1  a conversa ocupa a tela inteira, cobre a barra de cima e a de abas,
+ *        não estoura na horizontal por dentro, e o foco não fica na lista;
  *   A-2  os alvos têm 44px e "Assumir" abre a fileira, dentro da tela;
  *   A-3  voltar pela tela não reabre a conversa no voltar do navegador;
  *   A-4  voltar a partir de um link direto (o clique no aviso) não cresce o histórico;
  *   A-5  o gesto de voltar do sistema devolve a lista (guarda do que já funcionava);
  *   A-6  com o WhatsApp desconectado o documento cabe na tela e a faixa fica visível;
+ *        numa tela longa, a barra de cima gruda abaixo da faixa;
  *   A-7  com o teclado aberto (modelo Android: a janela encolhe) o composer e o
  *        último balão continuam visíveis e a fileira de ações sai.
  *
@@ -172,6 +174,11 @@ async function medirCamada(page: Page) {
     const faixas = parseFloat(
       getComputedStyle(document.documentElement).getPropertyValue("--faixas-de-cima") || "0",
     );
+    // A camada é `fixed`: o que estoura DENTRO dela não aumenta o
+    // `body.scrollWidth`. A medida do estouro é a da própria coluna, e a borda
+    // direita da fileira do composer (anexo, campo, enviar).
+    const campo = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Mensagem"]');
+    const filhosDoComposer = Array.from(campo?.parentElement?.children ?? []);
     return {
       fixa: !!coluna,
       topo: r?.top ?? -1,
@@ -180,6 +187,11 @@ async function medirCamada(page: Page) {
       cobreTopBar: dentro(195, faixas + 28),
       cobreAbas: dentro(195, window.innerHeight - 14),
       larguraDoBody: document.body.scrollWidth,
+      estouroDaColuna: coluna ? coluna.scrollWidth - coluna.clientWidth : -1,
+      direitaDoComposer: filhosDoComposer.length
+        ? Math.max(...filhosDoComposer.map((f) => f.getBoundingClientRect().right))
+        : -1,
+      fonteDoCampo: campo ? parseFloat(getComputedStyle(campo).fontSize) : 0,
       alturaDoFio: el.getBoundingClientRect().height,
     };
   });
@@ -202,6 +214,17 @@ test.describe("atender pelo celular", () => {
     expect(m.cobreTopBar, "a barra de cima aparece por cima da conversa").toBe(true);
     expect(m.cobreAbas, "a barra de abas aparece por cima da conversa").toBe(true);
     expect(m.larguraDoBody).toBeLessThanOrEqual(LARGURA);
+    expect(m.estouroDaColuna, "algo dentro da conversa estoura na horizontal").toBeLessThanOrEqual(1);
+    expect(m.direitaDoComposer, "a fileira do composer não foi achada").toBeGreaterThan(0);
+    expect(m.direitaDoComposer, "o composer passa da borda direita").toBeLessThanOrEqual(LARGURA);
+    expect(m.fonteDoCampo, "campo de mensagem com menos de 16px amplia a página no iPhone").toBeGreaterThanOrEqual(16);
+    // No iPhone tocar num botão não tira o foco do campo; a lista escondida
+    // atrás da conversa não pode seguir com a busca focada.
+    const focoEscondido = await page.evaluate(() => {
+      const ativo = document.activeElement;
+      return !!ativo && ativo !== document.body && getComputedStyle(ativo).visibility === "hidden";
+    });
+    expect(focoEscondido, "o foco ficou na lista escondida atrás da conversa").toBe(false);
     // Piso, não estimativa: um terço da tela para as mensagens. O valor real
     // fica no anexo para a próxima régua.
     test.info().annotations.push({ type: "altura-do-fio", description: String(m.alturaDoFio) });
@@ -333,6 +356,32 @@ test.describe("atender pelo celular", () => {
       const barraDeVoltar = await voltar(page).boundingBox();
       expect(barraDeVoltar!.y).toBeGreaterThanOrEqual(m.baseDasFaixas - 1);
       await page.screenshot({ path: path.join(EVIDENCE, "a6-conversa-com-faixa.png") });
+
+      // Numa tela longa a página rola, e a barra de cima tem de grudar ABAIXO
+      // da faixa, não por baixo dela. O espaçador simula a tela longa (Leads,
+      // Configurações) sem depender de dado: o que se mede é o `sticky`.
+      await voltar(page).tap();
+      await expect(linha(page)).toBeVisible();
+      const topo = await faixa.evaluate((el) => {
+        const espaco = document.createElement("div");
+        espaco.style.height = "3000px";
+        document.querySelector("main")!.appendChild(espaco);
+        window.scrollTo(0, 1500);
+        const cabecalho = Array.from(document.querySelectorAll("header")).find(
+          (h) => getComputedStyle(h).position === "sticky",
+        )!;
+        const barra = cabecalho.getBoundingClientRect();
+        const alvo = document.elementFromPoint(barra.left + barra.width / 2, barra.top + 4);
+        return {
+          rolou: window.scrollY,
+          baseDasFaixas: el.parentElement!.getBoundingClientRect().bottom,
+          topoDaBarra: barra.top,
+          barraPorCima: !!alvo && cabecalho.contains(alvo),
+        };
+      });
+      expect(topo.rolou, "o espaçador não fez a página rolar — o caso não mediu nada").toBeGreaterThan(100);
+      expect(Math.abs(topo.topoDaBarra - topo.baseDasFaixas), JSON.stringify(topo)).toBeLessThanOrEqual(1);
+      expect(topo.barraPorCima, "a faixa cobre o topo da barra de cima").toBe(true);
     } finally {
       await db.from("channel_sessions").delete().eq("id", caido);
       const { data: sobrou } = await db.from("channel_sessions").select("id").eq("id", caido);
