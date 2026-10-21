@@ -104,6 +104,7 @@ export const DICIONARIO: Traducoes = {
   },
   // Página inicial pública e seção "Dados do Google" da política de privacidade.
   "Atendimento e vendas pelo WhatsApp, com agentes de inteligência artificial.": { es: "Atención y ventas por WhatsApp, con agentes de inteligencia artificial." },
+  "Atendimento e vendas pelo WhatsApp, também no celular.": { es: "Atención y ventas por WhatsApp, también en el celular." },
   "reúne em um só lugar as conversas com os clientes, o funil de vendas, a agenda de atendimentos e agentes de inteligência artificial que respondem, qualificam o interesse e passam a conversa para uma pessoa quando é preciso.": { es: "reúne en un solo lugar las conversaciones con los clientes, el embudo de ventas, la agenda de atención y agentes de inteligencia artificial que responden, califican el interés y pasan la conversación a una persona cuando hace falta." },
   "Quando a empresa conecta o Google Agenda, o": { es: "Cuando la empresa conecta Google Calendar, el" },
   "mostra a ocupação da agenda e cria, altera e cancela os agendamentos pedidos pela própria pessoa. Quando conecta o Google Ads, devolve ao anúncio as vendas que ele trouxe. O uso dos dados do Google está descrito na": { es: "muestra la ocupación de la agenda y crea, modifica y cancela las citas pedidas por la propia persona. Cuando conecta Google Ads, devuelve al anuncio las ventas que trajo. El uso de los datos de Google está descrito en la" },
@@ -10419,7 +10420,10 @@ export const DICIONARIO: Traducoes = {
   "O navegador bloqueou as notificações. Libere-as nas configurações do site e recarregue.": { es: "El navegador bloqueó las notificaciones. Habilítalas en la configuración del sitio y recarga." },
   "Email ainda não está disponível. In-app (toast) e Push (Chrome) já funcionam para as cinco categorias, inclusive com a aba fechada.": { es: "El email todavía no está disponible. In-app (toast) y Push (Chrome) ya funcionan para las cinco categorías, incluso con la pestaña cerrada." },
   "Nesta instalação, os avisos só aparecem com o site aberto.": { es: "En esta instalación, los avisos solo aparecen con el sitio abierto." },
-  "Ligar o Push abaixo já faz o aviso aparecer na bandeja do sistema enquanto você está com o site aberto numa aba. Para receber também com a aba fechada, quem administra o servidor precisa gerar um par de chaves uma única vez e reiniciar:": { es: "Si activas el Push de abajo, el aviso ya aparece en la bandeja del sistema mientras tengas el sitio abierto en una pestaña. Para recibirlo también con la pestaña cerrada, quien administra el servidor debe generar un par de claves (una sola vez) y reiniciar:" },
+  "Este endereço não usa conexão segura (https), e sem ela nenhum navegador entrega aviso com o site fechado. Quem administra o servidor pode ligar um domínio com https.": { es: "Esta dirección no usa conexión segura (https), y sin ella ningún navegador entrega avisos con el sitio cerrado. Quien administra el servidor puede activar un dominio con https." },
+  "Ligar o Push abaixo já faz o aviso aparecer na bandeja do sistema enquanto você está com o site aberto numa aba. Para receber também com a aba fechada, quem administra o servidor precisa rodar a atualização da instalação: ela cria sozinha, uma única vez, o par de chaves que falta, mesmo quando não há versão nova:": { es: "Si activas el Push de abajo, el aviso ya aparece en la bandeja del sistema mientras tengas el sitio abierto en una pestaña. Para recibirlo también con la pestaña cerrada, quien administra el servidor debe ejecutar la actualización de la instalación: crea sola, una única vez, el par de claves que falta, incluso cuando no hay versión nueva:" },
+  "Em servidor montado sem o kit de instalação, gere o par uma única vez:": { es: "En un servidor montado sin el kit de instalación, genera el par una única vez:" },
+  "Não troque um par que já existe: trocar desliga os avisos de todo aparelho já inscrito.": { es: "No cambies un par que ya existe: cambiarlo apaga los avisos de todo dispositivo ya suscrito." },
   "VAPID_PUBLIC_KEY": { es: "VAPID_PUBLIC_KEY" },
   "VAPID_PRIVATE_KEY": { es: "VAPID_PRIVATE_KEY" },
   ". Email ainda não está disponível.": { es: ". El email todavía no está disponible." },
@@ -15550,7 +15554,7 @@ export const DICIONARIO: Traducoes = {
   "No arquivo de ambiente, as três variáveis GOOGLE_ADS_*.": { es: "En el archivo de entorno, las tres variables GOOGLE_ADS_*." },
   "Notificação com a aba fechada": { es: "Notificación con la pestaña cerrada" },
   "Os alertas chegam na bandeja do computador mesmo com o sistema fechado.": { es: "Las alertas llegan a la bandeja de la computadora aunque el sistema esté cerrado." },
-  "No arquivo de ambiente, o par VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY.": { es: "En el archivo de entorno, el par VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY." },
+  "Nasce pronto pelo kit de instalação, mas só funciona em endereço com https (em http://IP nenhum navegador entrega o aviso com o sistema fechado). Se aparecer desligado, rode no servidor: bash hostgator-setup-kit/update.sh": { es: "Viene listo con el kit de instalación, pero solo funciona en una dirección con https (en http://IP ningún navegador entrega el aviso con el sistema cerrado). Si aparece apagado, ejecuta en el servidor: bash hostgator-setup-kit/update.sh" },
   "Transcrição de áudio por outro serviço": { es: "Transcripción de audio por otro servicio" },
   "Manda a transcrição dos áudios para um serviço compatível que você escolher.": { es: "Envía la transcripción de los audios a un servicio compatible que elijas." },
   "No arquivo de ambiente, TRANSCRIPTION_BASE_URL.": { es: "En el archivo de entorno, TRANSCRIPTION_BASE_URL." },
@@ -16335,6 +16339,16 @@ export const DICIONARIO: Traducoes = {
   "Escondido, o campo não aparece no formulário nem é validado como obrigatório, e o valor já gravado continua no registro.": {
     es: "Oculto, el campo no aparece en el formulario ni se valida como obligatorio, y el valor ya guardado sigue en el registro.",
   },
+  // #2730 — validação de formato em campo de texto: a frase do CAMPO na tela,
+  // na API e no erro de ensino da IA. `padrao`/`mensagem_padrao` são dado do
+  // dono do funil; estas duas abaixo são as da CASA, para quando ele não deu a
+  // dele (ou quando a regex dele nem compila).
+  "Valor fora do formato esperado para este campo.": {
+    es: "Valor fuera del formato esperado para este campo.",
+  },
+  "Padrão inválido configurado neste campo: a gravação está bloqueada até a correção.": {
+    es: "Patrón inválido configurado en este campo: la escritura queda bloqueada hasta corregirlo.",
+  },
   // ─── Alarme de SLA ao encarregado (lib/lgpd/sla-alarm.ts, issue #2347) ─────
   // O e-mail fala a LÍNGUA de quem recebe, que vem do PAÍS (`PerfilDoPais.idioma`):
   // Portugal fala `pt-PT` e cai no português daqui. A LEI continua vindo do país,
@@ -16651,6 +16665,32 @@ export const DICIONARIO: Traducoes = {
   "Desligar o push de mensagem desliga todos os avisos deste aparelho fora do app.": {
     es: "Apagar el push de mensajes apaga todos los avisos de este dispositivo fuera de la app.",
   },
+  // ─── app no celular (ADR-0006, F1; app/app/settings/aplicativo/_client.tsx) ───
+  "App no celular": { es: "App en el celular" },
+  "Instale o sistema na tela de início do celular e receba os avisos.": { es: "Instala el sistema en la pantalla de inicio del celular y recibe los avisos." },
+  "Receber no celular: instalar o app": { es: "Recibir en el celular: instalar la app" },
+  "Ligar os avisos em Notificações": { es: "Activar los avisos en Notificaciones" },
+  "Esta instalação não tem app no celular.": { es: "Esta instalación no tiene app en el celular." },
+  "O endereço não usa conexão segura (https), e sem ela nenhum navegador instala o app nem entrega aviso com o app fechado. Quem administra o servidor pode ligar um domínio com https.": { es: "La dirección no usa conexión segura (https), y sin ella ningún navegador instala la app ni entrega avisos con la app cerrada. Quien administra el servidor puede activar un dominio con https." },
+  "Este navegador não conseguiu preparar o app neste endereço.": { es: "Este navegador no pudo preparar la app en esta dirección." },
+  "Se o sistema acabou de ser atualizado, espere um pouco e recarregue a página.": { es: "Si el sistema se acaba de actualizar, espera un poco y recarga la página." },
+  "Isso acontece no modo privado e quando o certificado de segurança do endereço não é reconhecido. Abra o endereço no Chrome ou no Safari, fora do modo privado; se continuar, quem administra o servidor precisa de um certificado válido.": { es: "Esto pasa en el modo privado y cuando el certificado de seguridad de la dirección no es reconocido. Abre la dirección en Chrome o en Safari, fuera del modo privado; si continúa, quien administra el servidor necesita un certificado válido." },
+  "Você já está usando o app.": { es: "Ya estás usando la app." },
+  "Este navegador, aberto de dentro de outro aplicativo, não instala o app.": { es: "Este navegador, abierto desde otra aplicación, no instala la app." },
+  "Toque no menu (⋯) e escolha Abrir no Safari. Depois, volte a esta tela.": { es: "Toca el menú (⋯) y elige Abrir en Safari. Después, vuelve a esta pantalla." },
+  "Toque no menu (⋮) e escolha Abrir no Chrome. Depois, volte a esta tela.": { es: "Toca el menú (⋮) y elige Abrir en Chrome. Después, vuelve a esta pantalla." },
+  "Toque em Compartilhar, na barra do Safari.": { es: "Toca Compartir, en la barra de Safari." },
+  "Toque em Compartilhar, no menu ou na barra de endereço do navegador.": { es: "Toca Compartir, en el menú o en la barra de direcciones del navegador." },
+  "Escolha Adicionar à Tela de Início.": { es: "Elige Agregar a inicio." },
+  "Abra pelo ícone novo, entre de novo com seu e-mail e senha e ligue os avisos em Notificações.": { es: "Abre desde el ícono nuevo, entra de nuevo con tu correo y contraseña y activa los avisos en Notificaciones." },
+  "No iPhone, os avisos só funcionam no app aberto pela tela de início, com iOS 16.4 ou mais novo.": { es: "En el iPhone, los avisos solo funcionan en la app abierta desde la pantalla de inicio, con iOS 16.4 o más nuevo." },
+  "Instale o app para abrir pelo ícone e receber os avisos.": { es: "Instala la app para abrirla desde el ícono y recibir los avisos." },
+  "Instalar app": { es: "Instalar app" },
+  "No menu do navegador (⋮), toque em Instalar app ou Adicionar à tela inicial.": { es: "En el menú del navegador (⋮), toca Instalar app o Agregar a la pantalla principal." },
+  "Depois, abra pelo ícone novo e ligue os avisos em Notificações.": { es: "Después, abre desde el ícono nuevo y activa los avisos en Notificaciones." },
+  "Não achou a opção? Se o link foi aberto por outro aplicativo (como o WhatsApp), toque em Abrir no Safari e repita.": { es: "¿No encontraste la opción? Si el enlace se abrió desde otra aplicación (como WhatsApp), toca Abrir en Safari y repite." },
+  "Não achou a opção? Se o link foi aberto por outro aplicativo (como o WhatsApp), toque no menu (⋮), escolha Abrir no Chrome e repita.": { es: "¿No encontraste la opción? Si el enlace se abrió desde otra aplicación (como WhatsApp), toca el menú (⋮), elige Abrir en Chrome y repite." },
+  "Abra este endereço no celular. No computador, Chrome e Edge instalam pelo ícone na barra de endereço.": { es: "Abre esta dirección en el celular. En la computadora, Chrome y Edge instalan desde el ícono en la barra de direcciones." },
   // Prospecção: estratégia, problemas e motivo do score na tela (#2711).
   "o site responde com erro ({codigo})": { es: "el sitio responde con error ({codigo})" },
   "feito em construtor pronto ({nome}) — mesma cara de milhares de outros": { es: "hecho con un constructor de sitios ({nome}) — la misma cara que miles de otros" },
