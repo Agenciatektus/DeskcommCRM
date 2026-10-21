@@ -21,7 +21,7 @@ import { AudioRecorder } from "@/components/inbox/composer/AudioRecorder";
 
 class FakeRecorder {
   static instances: FakeRecorder[] = [];
-  static isTypeSupported = () => true;
+  static isTypeSupported: (mime: string) => boolean = () => true;
   ondataavailable: ((e: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
   state = "inactive";
