@@ -30,9 +30,11 @@
  * de voz É o formato — chegar como arquivo anexo, sem a bolha e sem a onda,
  * muda o que a pessoa recebe.
  *
- * O codec já é opus dos dois lados; o que muda é o CONTAINER. Por isso
- * `-c:a copy`: sem reencodar, sem perda, e rápido o bastante para caber no
- * caminho do upload.
+ * No webm do Chrome o codec já é opus dos dois lados e o que muda é o
+ * CONTAINER: `-c:a copy`, sem reencodar, sem perda, e rápido o bastante para
+ * caber no caminho do upload. A nota de voz do iPhone (`audio/mp4`, AAC) não
+ * é opus: ela é REENCODADA em opus (`libopus`), que custa CPU — por isso só
+ * entra quando o gravador do composer a marca como nota de voz.
  */
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -138,7 +140,8 @@ async function runFfmpeg(args: string[], cwd: string): Promise<void> {
 }
 
 /**
- * WebM/Opus → Ogg/Opus, trocando só o container.
+ * Nota de voz → Ogg/Opus: o webm só troca de container; o resto marcado como
+ * nota de voz (o AAC do iPhone) é reencodado em opus.
  *
  * Falha devolve o original INTACTO, não erro: um áudio que talvez não saia é
  * melhor que um envio que morre antes de tentar — e o canal que aceita webm
