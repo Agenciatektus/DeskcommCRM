@@ -7,9 +7,10 @@ import { ehRecursoDeAudio, type Recurso } from "@/lib/inbox/recursos";
  * que a issue pede — "botões automáticos e clicáveis diretamente no Inbox" —
  * em vez de obrigar o operador a decorar um atalho de barra.
  *
- * O clique NÃO envia nada: só entrega o recurso escolhido ao compositor, que
- * decide entre pôr o texto no campo (editável) ou armar um anexo pendente. Por
- * isso este componente é burro de propósito: ele não conhece envio.
+ * O clique NÃO envia nada: só entrega o recurso escolhido ao compositor, que o
+ * passa ao MESMO `applyTemplate` do `/` — texto cai no campo editável, mídia
+ * (imagem OU áudio) entra na fila de anexos. Por isso este componente é burro de
+ * propósito: ele não conhece envio nem a natureza do recurso além do ícone.
  */
 interface Props {
   recursos: Recurso[];
@@ -24,7 +25,7 @@ export function BarraDeRecursos({ recursos, onEscolher, disabled = false }: Prop
     <div
       data-testid="barra-de-recursos"
       role="toolbar"
-      aria-label={t("Recursos")}
+      aria-label={t("Respostas rápidas")}
       className="mb-1.5 flex flex-wrap gap-1"
     >
       {recursos.map((recurso) => (
@@ -35,7 +36,7 @@ export function BarraDeRecursos({ recursos, onEscolher, disabled = false }: Prop
           data-recurso-id={recurso.id}
           data-recurso-tipo={ehRecursoDeAudio(recurso) ? "audio" : "texto"}
           onClick={() => onEscolher(recurso)}
-          title={t("Insere no campo — você edita e envia")}
+          title={t("Prepara no compositor — você revisa e envia")}
           className="rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
         >
           {ehRecursoDeAudio(recurso) ? `🎧 ${recurso.title}` : recurso.title}

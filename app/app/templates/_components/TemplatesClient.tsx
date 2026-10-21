@@ -98,11 +98,11 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
     <div className="space-y-4">
       <div className="flex sm:justify-end">
         <Button type="button" onClick={openNew} className="w-full sm:w-auto">
-          <Plus /> {t("Novo template")}
+          <Plus /> {t("Nova resposta rápida")}
         </Button>
       </div>
       {!templates?.length ? (
-        <p className="text-sm text-muted-foreground">{t("Nenhum template ainda.")}</p>
+        <p className="text-sm text-muted-foreground">{t("Nenhuma resposta rápida ainda.")}</p>
       ) : (
         <ul className="space-y-2">
           {templates.map((template) => {
@@ -129,7 +129,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                     )}
                   </div>
                   <p className="line-clamp-2 text-sm text-muted-foreground">
-                    {ehRecursoDeAudio(template) ? t("Recurso de áudio") : template.body}
+                    {ehRecursoDeAudio(template) ? t("Resposta rápida de áudio") : template.body}
                   </p>
                 </div>
                 {canModify(template) && (
@@ -138,7 +138,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                       type="button"
                       variant="ghost"
                       size="icon"
-                      aria-label={t("Editar template")}
+                      aria-label={t("Editar resposta rápida")}
                       onClick={() => openEdit(template)}
                     >
                       <PencilSimple />
@@ -149,14 +149,14 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                           type="button"
                           variant="ghost"
                           size="icon"
-                          aria-label={t("Excluir template")}
+                          aria-label={t("Excluir resposta rápida")}
                         >
                           <Trash />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>{t("Excluir este template?")}</AlertDialogTitle>
+                          <AlertDialogTitle>{t("Excluir esta resposta rápida?")}</AlertDialogTitle>
                           <AlertDialogDescription>
                             {t("Essa ação não pode ser desfeita.")}
                           </AlertDialogDescription>
@@ -166,7 +166,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                           <AlertDialogAction
                             onClick={() =>
                               del.mutate(template.id, {
-                                onSuccess: () => toast.success(t("Template excluído.")),
+                                onSuccess: () => toast.success(t("Resposta rápida excluída.")),
                               })
                             }
                           >

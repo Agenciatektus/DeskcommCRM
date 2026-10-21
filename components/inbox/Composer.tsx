@@ -26,7 +26,7 @@ import {
 import { resolveSlash, TemplateMenu } from "@/components/inbox/composer/TemplateMenu";
 import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
 import { useCreateNote } from "@/hooks/inbox/useCreateNote";
-import { useMessageTemplates, type MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
+import { useMessageTemplates } from "@/hooks/inbox/useMessageTemplates";
 import { X } from "lucide-react";
 import { toast } from "sonner";
 import { useSendMessage } from "@/hooks/inbox/useSendMessage";
@@ -50,7 +50,7 @@ import { embutirMencoes, podarMencoes, type MencaoEscolhida } from "@/lib/notifi
 import { cn } from "@/lib/utils";
 import { resolveSharedContact } from "@/lib/messaging/contact-card";
 import { BarraDeRecursos } from "@/components/inbox/composer/BarraDeRecursos";
-import { planoDoRecurso, type Recurso } from "@/lib/inbox/recursos";
+import { type Recurso } from "@/lib/inbox/recursos";
 import type { Message } from "@/lib/types/messaging";
 
 export interface ComposerHandle {
@@ -151,21 +151,13 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   // deixar a faixa prometendo texto que já saiu seria mentira de tela.
   const [rascunhoUsado, setRascunhoUsado] = useState(false);
   /**
-   * O áudio de um recurso ARMADO como anexo pendente (#2833). Não é enviado ao
-   * aparecer: fica aqui esperando o operador decidir. A URL assinada chega
-   * depois do clique (rota GET do recurso) e é o que o envio de mídia usa.
-   */
-  const [anexoDeRecurso, setAnexoDeRecurso] = useState<{
-    recursoId: string;
-    titulo: string;
-    media_url: string | null;
-    media_mime: string | null;
-    media_size_bytes: number | null;
-  } | null>(null);
-  /**
    * A FILA de anexos (#2526): o "+" escolhe uma, a resposta rápida traz as
    * várias que o operador carregou no template. Uma lista e não um arquivo é o
    * que permite o preview das duas antes de qualquer byte sair.
+   *
+   * É a MESMA fila que recebe a mídia de um recurso da barra (#2833): o clique
+   * do recurso passa pelo `applyTemplate`, e imagem e áudio entram aqui — com
+   * prévia e retry — em vez de um caminho próprio que perdia a imagem.
    */
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   /**
@@ -409,25 +401,6 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       });
   }
 
-  /**
-   * Põe um texto já pronto no CAMPO — editável, sem enviar. Compartilhado pelo
-   * slash-menu e pela barra de recursos de TEXTO (#2833); o áudio não passa por
-   * aqui, porque áudio não é texto no campo.
-   */
-  function aplicarTextoNoCampo(preenchido: string, corpoOriginal: string) {
-    // Contato sem `name` NEM `display_name`: o literal sobrevive no texto e iria
-    // pro cliente como `{{nome}}`. O toast é o primeiro aviso; a faixa
-    // persistente (mais abaixo) é o que fica, porque o operador precisa editar
-    // antes de mandar (#2744).
-    if (motivoDoCuringaLiteral(corpoOriginal, contato)) {
-      toast.warning(
-        t("Contato sem nome no CRM: {{nome}}/{{primeiro_nome}} ficaram literais no texto. Edite antes de enviar."),
-      );
-    }
-    setMenuDismissed(true);
-    escreverNoCampo(preenchido);
-  }
-
   /** Escreve no campo e poe o cursor no fim — o de sempre, isolado para reuso. */
   function escreverNoCampo(conteudo: string) {
     setText(conteudo);
@@ -441,35 +414,16 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   }
 
   /**
-   * A escolha de um recurso na barra (#2833). Texto → cai no campo editável;
-   * áudio → ANEXO PENDENTE, e o operador decide quando mandar. Nada é enviado
-   * aqui — é o critério central da issue, e a sabotagem o cobre.
+   * A escolha de um recurso na barra (#2833) — o MESMO caminho do `/`.
+   *
+   * Não existe plano próprio da barra: o recurso é entregue ao `applyTemplate`,
+   * que já separa as duas naturezas — texto cai no campo editável, e mídia
+   * (imagem OU áudio) entra na fila de anexos com o corpo como legenda. Era o
+   * caminho próprio que perdia a imagem do recurso. Nada é enviado aqui: é o
+   * critério central da issue, e o teste o cobre.
    */
   function escolherRecurso(recurso: Recurso) {
-    const contato: TemplateContact = {
-      name: contactName ?? null,
-      displayName: contactDisplayName ?? null,
-    };
-    const plano = planoDoRecurso(recurso, contato);
-    if (plano.tipo === "texto") {
-      aplicarTextoNoCampo(plano.texto, recurso.body);
-      return;
-    }
-    // Áudio: assina a URL do arquivo AGORA (clique) e arma o anexo pendente.
-    void apiClient
-      .get<{
-        data: { media_url: string | null; media_mime: string | null; media_size_bytes: number | null };
-      }>(`/api/v1/message-templates/${recurso.id}`)
-      .then((res) =>
-        setAnexoDeRecurso({
-          recursoId: recurso.id,
-          titulo: recurso.title,
-          media_url: res.data.media_url ?? null,
-          media_mime: res.data.media_mime ?? null,
-          media_size_bytes: res.data.media_size_bytes ?? null,
-        }),
-      )
-      .catch(() => toast.error(t("Não foi possível preparar o áudio do recurso.")));
+    void applyTemplate(recurso);
   }
 
   /**
@@ -495,7 +449,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   }
 
   /**
-   * Escolhe a resposta rápida (#2526).
+   * Escolhe a resposta rápida (#2526) — e é o MESMO caminho da barra de recursos
+   * (#2833): o `/` e a barra entregam o recurso AQUI, um caminho só.
    *
    * SÓ TEXTO continua sendo o de sempre, byte por byte: o corpo interpolado
    * vai para o campo. Com IMAGEM, o texto sai como legenda da primeira imagem
@@ -509,7 +464,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
    * preview: sem o Blob não há o que mostrar, e o operador só poderia aprovar
    * às cegas.
    */
-  async function applyTemplate(template: MessageTemplate) {
+  async function applyTemplate(template: Recurso) {
     const payload = payloadDeUso(template, contato);
     setMenuDismissed(true);
 
@@ -813,54 +768,15 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           </div>
         )}
         {/* A BARRA DE RECURSOS (#2833) — um botão por título cadastrado. O clique
-            NÃO envia: texto cai no campo editável, áudio arma o anexo pendente
-            logo abaixo. */}
+            NÃO envia: entrega o recurso ao MESMO `applyTemplate` que o `/` usa.
+            Texto cai no campo editável; mídia (imagem OU áudio) entra na fila de
+            anexos, com prévia e legenda — não há barra de anexo própria. */}
         {mode === "reply" && (
           <BarraDeRecursos
             recursos={templates.data ?? []}
             disabled={respostaBarrada}
             onEscolher={escolherRecurso}
           />
-        )}
-        {/* O ÁUDIO ARMADO (#2833): pendente até o operador clicar em enviar. */}
-        {mode === "reply" && anexoDeRecurso && (
-          <div
-            data-testid="anexo-de-recurso-pendente"
-            className="mb-1 flex items-center gap-2 rounded-md border border-border bg-muted/60 px-2 py-1.5 text-xs"
-          >
-            <span className="min-w-0 flex-1 truncate">
-              🎧 <span className="font-medium">{anexoDeRecurso.titulo}</span>
-              {" — "}
-              {t("áudio pendente; você decide quando enviar")}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                if (!anexoDeRecurso.media_url) return;
-                send.mutate(
-                  {
-                    conversation_id: conversationId,
-                    type: "audio",
-                    media_url: anexoDeRecurso.media_url,
-                    media_mime: anexoDeRecurso.media_mime ?? undefined,
-                    media_size_bytes: anexoDeRecurso.media_size_bytes ?? undefined,
-                  },
-                  { onSuccess: () => setAnexoDeRecurso(null) },
-                );
-              }}
-              className="shrink-0 rounded-md border border-border px-2 py-0.5 font-medium hover:bg-muted"
-            >
-              {t("Enviar áudio")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setAnexoDeRecurso(null)}
-              aria-label={t("Remover áudio pendente")}
-              className="shrink-0 rounded-md p-0.5 hover:bg-muted"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
         )}
         <div className="flex items-end gap-2">
           {/* O "+" existe nos DOIS modos desde a F3 da #1863: em "Nota interna"

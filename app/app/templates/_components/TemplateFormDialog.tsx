@@ -202,7 +202,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
     // recurso já tem. Sem nenhum dos dois não haveria conteúdo nenhum: nem
     // texto (o modo áudio não tem campo) nem arquivo.
     if (tipo === "audio" && !arquivo && !audioAtual) {
-      toast.error(t("Escolha um arquivo de áudio para o recurso."));
+      toast.error(t("Escolha um arquivo de áudio para a resposta rápida."));
       return;
     }
     // Recurso de áudio não tem corpo: o conteúdo é o arquivo.
@@ -248,7 +248,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
           if (file === arquivo) setArquivo(null);
           setNovas((atual) => atual.filter((f) => f !== file));
         }
-        toast.success(t("Recurso atualizado."));
+        toast.success(t("Resposta rápida atualizada."));
       } else {
         const criado = await create.mutateAsync({
           title,
@@ -269,7 +269,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
           qc.invalidateQueries({ queryKey: TEMPLATES_KEY });
           onOpenChange(false);
         }
-        toast.success(t("Recurso criado."));
+        toast.success(t("Resposta rápida criada."));
       }
       onOpenChange(false);
     } catch {
@@ -281,14 +281,14 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? t("Editar recurso") : t("Novo recurso")}</DialogTitle>
+          <DialogTitle>{isEdit ? t("Editar resposta rápida") : t("Nova resposta rápida")}</DialogTitle>
           <DialogDescription>
-            {t("Recursos pré-prontos: o texto cai no campo editável do Inbox; o áudio vira anexo pendente.")}
+            {t("Respostas rápidas: o texto cai no campo editável do Inbox; a imagem e o áudio entram na fila de anexos, com prévia, e você revisa antes de enviar.")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label>{t("Tipo de recurso")}</Label>
+            <Label>{t("Tipo de resposta rápida")}</Label>
             <div className="flex gap-1">
               {TIPOS_DE_RECURSO.map((opcao) => (
                 <Button
@@ -350,13 +350,13 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
                   preload="none"
                   src={urlDaGravada(audioAtual)}
                   className="h-9 w-full"
-                  aria-label={t("Áudio do recurso")}
+                  aria-label={t("Áudio da resposta rápida")}
                 />
               )}
               <p className="text-xs text-muted-foreground">
                 {audioAtual && !arquivo
                   ? t("Áudio atual mantido. Escolha outro arquivo para substituir.")
-                  : t("O áudio fica na biblioteca e entra no Inbox como anexo pendente.")}
+                  : t("O áudio fica na biblioteca e entra no Inbox na fila de anexos, como o `/`.")}
               </p>
             </div>
           )}
@@ -463,7 +463,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
               {t("Cancelar")}
             </Button>
             <Button type="submit" disabled={pending || (tipo === "texto" && estourou)}>
-              {isEdit ? t("Salvar") : t("Criar recurso")}
+              {isEdit ? t("Salvar") : t("Criar resposta rápida")}
             </Button>
           </DialogFooter>
         </form>

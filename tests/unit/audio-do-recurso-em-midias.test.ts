@@ -12,8 +12,10 @@
  * 2. O teto é do tipo JÁ farejado: 16 MB para áudio, 5 MB para imagem. O teto
  *    de imagem não serve para áudio — e o caso do limite é o que reprova uma
  *    rota que aceite acima do teto.
- * 3. A leitura (GET do recurso) confere o caminho ANTES de assinar: um áudio
- *    de outra organização gravado na linha não vira URL assinada.
+ * 3. A leitura do arquivo é a MESMA do `/` (`GET .../midias/:indice`, que
+ *    devolve o corpo pela própria origem): a rota GET da URL assinada saiu com
+ *    o caminho próprio da barra, e o recurso passou a baixar os bytes como
+ *    qualquer outra mídia de resposta rápida.
  *
  * Nada aqui abre caminho paralelo de mídia: bucket, prefixo e coluna são os da
  * resposta rápida (#2526) — de propósito.
@@ -29,7 +31,6 @@ const h = vi.hoisted(() => ({
   storage: {
     upload: vi.fn(),
     remove: vi.fn(),
-    createSignedUrl: vi.fn(),
   },
 }));
 
@@ -41,7 +42,6 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({ storage: { from: () => h.storage } }),
 }));
 
-import { GET } from "@/app/api/v1/message-templates/[id]/route";
 import { POST } from "@/app/api/v1/message-templates/[id]/midias/route";
 import {
   TAMANHO_MAXIMO_DA_MIDIA,
@@ -126,10 +126,6 @@ beforeEach(() => {
   h.apoio.mockResolvedValue(null);
   h.storage.upload.mockResolvedValue({ error: null });
   h.storage.remove.mockResolvedValue({ error: null });
-  h.storage.createSignedUrl.mockResolvedValue({
-    data: { signedUrl: "https://storage.local/x.ogg?sig=1" },
-    error: null,
-  });
 });
 
 describe("o farejador decide pelo BYTES — e o áudio é tipo de `midias`", () => {
@@ -237,44 +233,3 @@ describe("POST /message-templates/:id/midias — áudio", () => {
   });
 });
 
-describe("GET /message-templates/:id — a URL assinada do áudio", () => {
-  const audioDe = (org: string) => ({
-    storage_path: `${org}/templates/${TPL}/0a0b0c0d-0000-4000-8000-000000000001.ogg`,
-    media_mime: "audio/ogg",
-    media_size_bytes: 12,
-  });
-
-  const get = () =>
-    GET(new NextRequest(`http://localhost/api/v1/message-templates/${TPL}`), params);
-
-  it("assina o caminho do áudio no bucket das midias", async () => {
-    template({ id: TPL, owner_user_id: USER, midias: [audioDe(ORG)] });
-
-    const r = await get();
-
-    expect(r.status).toBe(200);
-    expect(h.storage.createSignedUrl).toHaveBeenCalledWith(audioDe(ORG).storage_path, 600);
-    expect((await r.json()).data).toMatchObject({
-      media_url: "https://storage.local/x.ogg?sig=1",
-      media_mime: "audio/ogg",
-    });
-  });
-
-  it("caminho de OUTRA organização gravado na linha: 422, sem assinar nada", async () => {
-    template({ id: TPL, owner_user_id: USER, midias: [audioDe(OUTRA_ORG)] });
-
-    const r = await get();
-
-    expect(r.status).toBe(422);
-    expect(h.storage.createSignedUrl).not.toHaveBeenCalled();
-  });
-
-  it("recurso sem áudio em `midias`: 422, sem assinar nada", async () => {
-    template({ id: TPL, owner_user_id: USER, midias: [] });
-
-    const r = await get();
-
-    expect(r.status).toBe(422);
-    expect(h.storage.createSignedUrl).not.toHaveBeenCalled();
-  });
-});

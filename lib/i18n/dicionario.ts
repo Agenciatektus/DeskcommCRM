@@ -10343,6 +10343,37 @@ export const DICIONARIO: Traducoes = {
   "Recursos pré-prontos: o texto cai no campo editável do Inbox; o áudio vira anexo pendente.": {
     es: "Recursos predefinidos: el texto cae en el campo editable del Inbox; el audio se convierte en adjunto pendiente.",
   },
+  // ── "Respostas rápidas" é o nome ÚNICO da tela (#2833) ────────────────────
+  // A página dizia "Respostas rápidas", a lista dizia "Novo template" e o
+  // formulário dizia "Novo recurso" — três nomes para a mesma linha. As chaves
+  // abaixo são o nome novo; as antigas ("Novo recurso", "Novo template", ...)
+  // seguem no dicionário sem consumidor, de propósito: apagar entrada é passe
+  // próprio, e uma chave órfã não muda uma letra da tela.
+  "Nova resposta rápida": { es: "Nueva respuesta rápida" },
+  "Editar resposta rápida": { es: "Editar respuesta rápida" },
+  "Excluir resposta rápida": { es: "Eliminar respuesta rápida" },
+  "Criar resposta rápida": { es: "Crear respuesta rápida" },
+  "Nenhuma resposta rápida ainda.": { es: "Todavía no hay respuestas rápidas." },
+  "Resposta rápida de áudio": { es: "Respuesta rápida de audio" },
+  "Resposta rápida criada.": { es: "Respuesta rápida creada." },
+  "Resposta rápida atualizada.": { es: "Respuesta rápida actualizada." },
+  "Resposta rápida excluída.": { es: "Respuesta rápida eliminada." },
+  "Excluir esta resposta rápida?": { es: "¿Eliminar esta respuesta rápida?" },
+  "Tipo de resposta rápida": { es: "Tipo de respuesta rápida" },
+  "Áudio da resposta rápida": { es: "Audio de la respuesta rápida" },
+  "Escolha um arquivo de áudio para a resposta rápida.": {
+    es: "Elija un archivo de audio para la respuesta rápida.",
+  },
+  "O áudio fica na biblioteca e entra no Inbox na fila de anexos, como o `/`.": {
+    es: "El audio queda en la biblioteca y entra en el Inbox en la cola de adjuntos, como el `/`.",
+  },
+  "Respostas rápidas: o texto cai no campo editável do Inbox; a imagem e o áudio entram na fila de anexos, com prévia, e você revisa antes de enviar.":
+    {
+      es: "Respuestas rápidas: el texto cae en el campo editable del Inbox; la imagen y el audio entran en la cola de adjuntos, con vista previa, y tú revisas antes de enviar.",
+    },
+  "Prepara no compositor — você revisa e envia": {
+    es: "Prepara en el compositor — tú revisas y envías",
+  },
   "Recursos": { es: "Recursos" },
   "Insere no campo — você edita e envia": { es: "Inserta en el campo — tú editas y envías" },
   "áudio pendente; você decide quando enviar": {

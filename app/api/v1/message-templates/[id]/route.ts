@@ -1,9 +1,17 @@
 import { requireSupportWrite } from "@/lib/impersonate/support";
 /**
- * GET    /api/v1/message-templates/[id] — URL assinada do áudio do recurso.
  * PATCH  /api/v1/message-templates/[id] — atualiza título/corpo/atalho, a mídia
  *        do recurso e a LISTA de imagens (`midias`, #2526).
  * DELETE /api/v1/message-templates/[id] — remove o template e as imagens dele.
+ *
+ * ─── A rota GET (URL assinada do áudio) saiu em #2833 ───────────────────────
+ *
+ * Ela existia para o caminho próprio da barra de recursos: o clique assinava a
+ * URL do áudio e armava um anexo pendente só dele. Com a barra passando pelo
+ * MESMO `applyTemplate` do `/` (que baixa os bytes por
+ * `GET /message-templates/:id/midias/:indice`, a rota que já existia), ninguém
+ * mais a chamava: o grep de chamadores — `useMessageTemplates`, hooks e telas —
+ * ficou vazio, e o compositor era o último consumidor.
  *
  * O `.eq("organization_id", org.orgId)` é defesa extra, não substitui a RLS
  * `message_templates_write` — quem já não é dono (agent) nem manager (compartilhado)
@@ -31,15 +39,12 @@ import { audit } from "@/lib/audit";
 import { fail, ok, noContent } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
 import { updateTemplateSchema } from "@/lib/schemas/templates";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { logger } from "@/lib/logger";
 import { apagarMidiasDoTemplate } from "@/lib/templates/midias-no-bucket";
 import {
-  BUCKET_DAS_MIDIAS,
   conferirMidias,
-  midiaDeAudioDe,
   midiaPertenceAoTemplate,
   type MidiaDeTemplate,
 } from "@/lib/templates/midias";
@@ -48,66 +53,13 @@ export const dynamic = "force-dynamic";
 const COLS =
   "id, organization_id, owner_user_id, title, body, shortcut, midias, created_by_user_id, created_at, updated_at";
 
-/** TTL curto: o compositor assina na hora do clique e envia logo depois. */
-const VALIDADE_DA_ASSINATURA_S = 600;
-
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
 /**
- * GET devolve a URL ASSINADA do áudio do recurso — nunca o arquivo nem o
- * caminho cru. O áudio é uma entrada de `midias` (#2833): o mesmo bucket
- * privado `whatsapp-media` e o mesmo prefixo do template, e o caminho é
- * conferido contra ele ANTES de assinar, porque a coluna é gravável pelo
- * PostgREST.
- *
- * Assinar pelo `admin` (service role) é o mesmo caminho do envio de mídia por
- * `media_url`: a guarda anti-SSRF do gateway reconhece, por construção, uma URL
- * assinada pelo próprio Storage desta instalação.
+ * PATCH — atualiza título/corpo/atalho, a mídia do recurso e a LISTA de imagens.
  */
-export async function GET(_req: NextRequest, { params }: RouteParams): Promise<Response> {
-  const requestId = randomUUID();
-  const authz = await requireRole("agent", { requestId, resource: "message_templates" });
-  if (!authz.ok) return authz.response;
-  const t = (texto: string) => traduzir(texto, authz.user.idioma);
-  const { org } = authz;
-  const { id } = await params;
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("message_templates")
-    .select("midias")
-    .eq("id", id)
-    .eq("organization_id", org.orgId)
-    .maybeSingle();
-  if (error) return fail("internal_error", t("Erro ao ler o recurso."), 500, { requestId });
-  if (!data) return fail("not_found", t("Recurso não encontrado."), 404, { requestId });
-
-  const midias = (data as { midias: MidiaDeTemplate[] | null }).midias ?? [];
-  const audio = midiaDeAudioDe(midias);
-  if (!audio || !midiaPertenceAoTemplate(audio.storage_path, org.orgId, id)) {
-    return fail("validation_failed", t("Este recurso não tem áudio."), 422, { requestId });
-  }
-
-  const admin = createAdminClient();
-  const { data: assinada, error: signErr } = await admin.storage
-    .from(BUCKET_DAS_MIDIAS)
-    .createSignedUrl(audio.storage_path, VALIDADE_DA_ASSINATURA_S);
-  if (signErr || !assinada?.signedUrl) {
-    return fail("internal_error", t("Erro ao preparar o áudio do recurso."), 500, { requestId });
-  }
-
-  return ok(
-    {
-      media_url: assinada.signedUrl,
-      media_mime: audio.media_mime,
-      media_size_bytes: audio.media_size_bytes,
-    },
-    { requestId },
-  );
-}
-
 export async function PATCH(req: NextRequest, { params }: RouteParams): Promise<Response> {
   const supportDenied = await requireSupportWrite();
   if (supportDenied) return supportDenied;

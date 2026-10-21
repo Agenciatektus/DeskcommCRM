@@ -213,7 +213,8 @@ export function ehMidiaDeAudio(midia: { storage_path: string }): boolean {
  * A entrada de áudio de uma lista de mídias — a PRIMEIRA, na ordem gravada.
  *
  * Um recurso de áudio é um template cujo `midias` carrega o arquivo; a barra de
- * recursos pergunta aqui para decidir entre pôr texto no campo e armar o anexo.
+ * recursos pergunta aqui para escolher o ícone (🎧) do botão — o caminho de
+ * escolha é o MESMO `applyTemplate` do `/`, que não precisa desta resposta.
  * `undefined` = recurso de texto (ou template antigo, sem mídia nenhuma).
  */
 export function midiaDeAudioDe(
