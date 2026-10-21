@@ -81,6 +81,8 @@ interface MarcaArt12 {
   sent_at: string;
   prazo_de_um_mes: string;
   dentro_do_prazo: boolean;
+  /** Todo desfecho já avisado neste pedido, e não só o último (ver a guarda abaixo). */
+  avisados?: ("refusal" | "extension")[];
 }
 
 export async function POST(
@@ -178,14 +180,18 @@ export async function POST(
       { requestId },
     );
   }
+  // Cada desfecho sai UMA vez por pedido, e não só "diferente do último":
+  // alternar recusa e prorrogação não reenvia e-mail nem empurra o prazo de novo.
+  const avisados = new Set(anterior ? [...(anterior.avisados ?? []), anterior.kind] : []);
+  if (avisados.has(kind)) {
+    return ok({ request_id: pedido.id, kind, duplicate: true }, { requestId });
+  }
 
   // O endereço do titular: do contato, e do payload do pedido como fallback —
   // o webhook da plataforma entrega o e-mail mesmo quando o contato local não
-  // tem nenhum.
-  const emailNoPayload = payload["email"];
-  let emailTitular: string | null =
-    typeof emailNoPayload === "string" ? emailNoPayload.trim() : null;
-  if (!emailTitular && pedido.contact_id) {
+  // tem nenhum. A mesma ordem do worker de apagamento.
+  let emailTitular: string | null = null;
+  if (pedido.contact_id) {
     const { data: contato } = await admin
       .from("contacts")
       .select("email")
@@ -193,6 +199,10 @@ export async function POST(
       .eq("id", pedido.contact_id)
       .maybeSingle();
     emailTitular = ((contato as { email?: string | null } | null)?.email ?? "").trim() || null;
+  }
+  const emailNoPayload = payload["email"];
+  if (!emailTitular && typeof emailNoPayload === "string") {
+    emailTitular = emailNoPayload.trim() || null;
   }
   if (!emailTitular) {
     return fail("titular_sem_email", t("O titular não tem e-mail para receber o aviso."), 422, {
@@ -241,6 +251,7 @@ export async function POST(
     sent_at: agora.toISOString(),
     prazo_de_um_mes: prazo.toISOString(),
     dentro_do_prazo: dentroDoPrazoDeUmMes(recebidoEm, agora),
+    avisados: [...avisados, kind],
   };
 
   // A prorrogação empurra o prazo de resposta (n.º 5): nunca para TRÁS do que a

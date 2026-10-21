@@ -279,4 +279,26 @@ describe("a ROTA: a organização brasileira é recusada antes de tocar em qualq
     );
     expect(payload.art12?.dentro_do_prazo).toBeDefined();
   });
+
+  it("PORTUGAL: cada desfecho sai UMA vez — alternar recusa e prorrogação não reenvia nem empurra o prazo", async () => {
+    estado.orgId = ORG_PT;
+    // Depende do caso acima: a prorrogação deste pedido já saiu.
+    const enviadosAntes = enviados.length;
+
+    const recusa = await chamarRota(PEDIDO_PT_ROTA, "refusal");
+    expect(recusa.status).toBe(200);
+    expect(enviados.length - enviadosAntes, "a primeira recusa não saiu").toBe(1);
+    const dueDepoisDaRecusa = await coluna<string>(PEDIDO_PT_ROTA, "due_at");
+
+    for (const kind of ["extension", "refusal"] as const) {
+      const resposta = await chamarRota(PEDIDO_PT_ROTA, kind);
+      expect(resposta.status).toBe(200);
+      const corpo = (await resposta.json()) as { data: { duplicate: boolean } };
+      expect(corpo.data.duplicate, `${kind} repetido saiu como novo`).toBe(true);
+    }
+    expect(enviados.length - enviadosAntes, "alternar os desfechos reenviou e-mail").toBe(1);
+    expect(new Date(await coluna<string>(PEDIDO_PT_ROTA, "due_at")).toISOString()).toBe(
+      new Date(dueDepoisDaRecusa).toISOString(),
+    );
+  });
 });
