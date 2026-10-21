@@ -17,6 +17,19 @@ function convertivel(mime: string | null | undefined): boolean {
   return CONVERTIVEIS.has((mime ?? "").split(";")[0]!.trim().toLowerCase());
 }
 
+/**
+ * O aparelho toca este áudio COM CERTEZA? Aí um erro do `<audio>` é a mídia
+ * (canal fora, Storage sem assinar), não o formato, e converter não salva.
+ * Sem codec no mime a pergunta leva `codecs=opus`: o Chrome diz só "maybe"
+ * para `audio/ogg` puro.
+ * ponytail: supõe opus, o codec de toda nota de voz; um ogg/vorbis sem codec
+ * no mime cairia na conversão à toa (só custa uma ida ao ffmpeg).
+ */
+function tocaComCerteza(el: HTMLAudioElement, mime: string): boolean {
+  const comCodec = mime.includes("codecs") ? mime : `${mime}; codecs="opus"`;
+  return el.canPlayType(comCodec) === "probably";
+}
+
 /** O que o aparelho toca não muda enquanto a página vive: não há a que se inscrever. */
 const semInscricao = () => () => {};
 
@@ -84,7 +97,8 @@ export function AudioPlayer({ messageId, isOutbound, src, mime }: Props) {
     // conversão UMA vez. Indisponível só quando a cópia convertida também
     // falha, ou quando não há o que converter.
     const onError = () => {
-      if (podeConverter && !(blobRef.current && el.src === blobRef.current)) setErroLigouConversao(true);
+      const jaConvertido = blobRef.current && el.src === blobRef.current;
+      if (podeConverter && mime && !jaConvertido && !tocaComCerteza(el, mime)) setErroLigouConversao(true);
       else setFailed(true);
     };
     el.addEventListener("timeupdate", onTime);
@@ -99,7 +113,7 @@ export function AudioPlayer({ messageId, isOutbound, src, mime }: Props) {
       el.removeEventListener("ended", onEnded);
       el.removeEventListener("error", onError);
     };
-  }, [podeConverter]);
+  }, [podeConverter, mime]);
 
   if (failed) return <MediaUnavailable kind="Áudio" className="h-12 w-60" />;
 

@@ -196,6 +196,22 @@ describe("áudio que o aparelho não toca", () => {
     await waitFor(() => expect(screen.getByText(/mídia indisponível/i)).toBeInTheDocument());
   });
 
+  it("navegador que toca ogg com certeza: mídia quebrada é 'indisponível' na hora, sem conversão", async () => {
+    // O Chrome responde "maybe" para `audio/ogg` puro e "probably" com o codec:
+    // a pergunta leva `codecs=opus` quando o mime veio sem.
+    vi.spyOn(window.HTMLMediaElement.prototype, "canPlayType").mockImplementation((tipo: string) =>
+      /codecs="?opus/.test(tipo) ? "probably" : "maybe",
+    );
+    const fetchMock = fetchDoAac();
+    const { container } = render(<AudioPlayer messageId="m3" isOutbound={false} mime="audio/ogg" />);
+    const audio = container.querySelector("audio") as HTMLAudioElement;
+    act(() => {
+      audio.dispatchEvent(new Event("error"));
+    });
+    await waitFor(() => expect(screen.getByText(/mídia indisponível/i)).toBeInTheDocument());
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("a conversão falhou no servidor: indisponível, sem tentar tocar", async () => {
     aparelhoToca("");
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 502 })));
