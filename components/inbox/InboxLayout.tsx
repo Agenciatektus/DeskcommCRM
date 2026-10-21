@@ -653,6 +653,7 @@ export function InboxLayout({
   }, [faixa, aplicarLarguras]);
 
   // Altura da grade: a conta desconta TUDO que fica acima e abaixo dela.
+  //   --faixas-de-cima  as faixas do topo (canal caído etc., `FaixasDeCima`)
   //   3.5rem            TopBar (`h-14`, em components/shell/TopBar.tsx)
   //   2 * --space-6     padding do <main> do AppShell (`p-6`, em cima e embaixo)
   //
@@ -697,7 +698,7 @@ export function InboxLayout({
     <div
       ref={gradeRef}
       className={cn(
-        "grid relative h-[calc(100dvh-3.5rem-var(--space-6)-max(var(--space-6),var(--rodape-ocupado,0px)))] w-full grid-cols-1 md:grid-cols-[300px_1fr]",
+        "grid relative h-[calc(100dvh-var(--faixas-de-cima,0px)-3.5rem-var(--space-6)-max(var(--space-6),var(--rodape-ocupado,0px)))] w-full grid-cols-1 md:grid-cols-[300px_1fr]",
         // Recolhido (issue #3004), a terceira trilha vira o trilho estreito do
         // botão de expandir e a conversa fica com o que era da ficha. Duas
         // listas em vez de uma classe com valor em variável: o Tailwind precisa
