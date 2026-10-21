@@ -35,10 +35,17 @@ interface MessagesPage {
 /** O mesmo envio (mesma conversa, mesmo conteúdo) tem a mesma identidade. */
 const identidadeDoEnvio = (input: SendArgs) => JSON.stringify(input);
 
+/**
+ * Por quanto tempo o mesmo texto depois de um erro ainda é "tentar de novo".
+ * Mais tarde que isto, "ok" ou "Bom dia!" é uma mensagem nova — e o recibo do
+ * servidor vale 24h, então reaproveitar a chave calaria a mensagem nova.
+ */
+const REAPROVEITA_CHAVE_MS = 2 * 60 * 1000;
+
 export function useSendMessage() {
   const qc = useQueryClient();
   /**
-   * A chave de idempotência de cada envio que AINDA NÃO deu certo.
+   * A chave de idempotência de cada envio que FALHOU há pouco.
    *
    * Depois de um erro de rede o texto volta ao campo; se a pessoa toca Enviar
    * de novo com o mesmo texto, a chave é a mesma e o servidor devolve o recibo
@@ -46,14 +53,25 @@ export function useSendMessage() {
    * Texto editado é outra mensagem e ganha outra chave. Só em memória: nada do
    * atendimento fica guardado no aparelho.
    */
-  const chaves = useRef(new Map<string, string>());
+  const chaves = useRef(new Map<string, { chave: string; falhouEm: number }>());
 
   return useMutation({
     mutationFn: async (input: SendArgs) => {
       const identidade = identidadeDoEnvio(input);
-      const idempotencyKey = chaves.current.get(identidade) ?? randomId();
-      chaves.current.set(identidade, idempotencyKey);
-      return apiClient.post<{ data: Message }>("/api/v1/messages", input, { idempotencyKey });
+      const anterior = chaves.current.get(identidade);
+      // Só a chave de um envio que FALHOU há pouco. A de um envio ainda em voo
+      // não: o campo foi limpo no envio, então o mesmo texto de novo é a pessoa
+      // escrevendo outra vez, e não o mesmo toque repetido.
+      const idempotencyKey = anterior && Date.now() - anterior.falhouEm < REAPROVEITA_CHAVE_MS
+        ? anterior.chave
+        : randomId();
+      chaves.current.delete(identidade);
+      try {
+        return await apiClient.post<{ data: Message }>("/api/v1/messages", input, { idempotencyKey });
+      } catch (err) {
+        chaves.current.set(identidade, { chave: idempotencyKey, falhouEm: Date.now() });
+        throw err;
+      }
     },
     onMutate: async (args) => {
       if (args.media_storage_path || args.media_url || args.type === "contact") return {};
@@ -115,7 +133,6 @@ export function useSendMessage() {
       return { tempId };
     },
     onSuccess: (result, args, context) => {
-      chaves.current.delete(identidadeDoEnvio(args));
       const real = result.data;
       const queryKey = ["messages", args.conversation_id];
       qc.setQueryData<InfiniteData<MessagesPage>>(queryKey, (old) => {

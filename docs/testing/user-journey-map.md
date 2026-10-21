@@ -3639,7 +3639,7 @@ Spec: `tests/e2e/reenvio-pelo-celular.spec.ts` (parte 5), 390x844 com toque, log
 | J50.4 | Mensagem da IA que falhou | motivo à vista, sem botão (o motor da IA tem quem tente de novo) | a medir (CI) + UNIT `reenvio.test` |
 | J50.5 | Dois toques ao mesmo tempo | a trava pelo `updated_at` deixa passar um só (409 `reenvio_em_curso` no outro) | UNIT `mensagem-retry-rota` |
 | J50.6 | Recusa antes do envio (contato bloqueado, pessoal) | a linha volta ao estado lido e o erro chega à tela | UNIT `mensagem-retry-rota` |
-| J50.7 | O mesmo texto depois de erro de rede | o composer reaproveita a chave de idempotência; o servidor devolve o recibo em vez de mandar de novo | UNIT `use-send-message-idempotencia` |
+| J50.7 | O mesmo texto depois de erro de rede | o composer reaproveita a chave de idempotência por até 2 min depois do erro; o servidor devolve o recibo em vez de mandar de novo. Mais tarde, ou com o primeiro ainda em voo, o mesmo texto é mensagem nova | UNIT `use-send-message-idempotencia` |
 
 **Laço de retorno (sistema vivo):** falhar de novo devolve a bolha a «Falhou» com o
 motivo novo; cada tentativa fica no audit (`message.retried`, com o status, o

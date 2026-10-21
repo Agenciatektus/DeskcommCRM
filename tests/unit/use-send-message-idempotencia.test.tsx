@@ -25,7 +25,7 @@ async function enviar(hook: ReturnType<typeof setup>, body: string) {
   });
 }
 
-afterEach(() => post.mockReset());
+afterEach(() => { post.mockReset(); vi.useRealTimers(); });
 
 describe("envio pelo composer: chave de idempotência estável por conteúdo", () => {
   it("o mesmo texto reenviado depois de erro leva a MESMA chave", async () => {
@@ -53,5 +53,30 @@ describe("envio pelo composer: chave de idempotência estável por conteúdo", (
     await enviar(hook, "ok");
     await enviar(hook, "ok");
     expect(chaveDa(1)).not.toBe(chaveDa(0));
+  });
+
+  it("o mesmo texto bem depois do erro é mensagem nova: o recibo antigo não a cala", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-21T12:00:00.000Z"));
+    post.mockRejectedValueOnce(new Error("rede caiu"));
+    post.mockResolvedValueOnce({ data: { id: "m2", conversation_id: conversa } });
+    const hook = setup();
+    await enviar(hook, "ok");
+    vi.setSystemTime(new Date("2026-10-21T12:30:00.000Z"));
+    await enviar(hook, "ok");
+    expect(chaveDa(1)).not.toBe(chaveDa(0));
+  });
+
+  it("o mesmo texto enquanto o primeiro ainda está em voo é outra mensagem", async () => {
+    let soltar: (v: unknown) => void = () => undefined;
+    post.mockImplementationOnce(() => new Promise((r) => { soltar = r; }));
+    post.mockResolvedValueOnce({ data: { id: "m2", conversation_id: conversa } });
+    const hook = setup();
+    let primeiro: Promise<unknown> = Promise.resolve();
+    act(() => { primeiro = hook.result.current.mutateAsync({ conversation_id: conversa, body: "ok" }); });
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await enviar(hook, "ok");
+    expect(chaveDa(1), "o segundo 'ok' reaproveitou a chave do primeiro em voo e cairia em 409").not.toBe(chaveDa(0));
+    await act(async () => { soltar({ data: { id: "m1", conversation_id: conversa } }); await primeiro; });
   });
 });
