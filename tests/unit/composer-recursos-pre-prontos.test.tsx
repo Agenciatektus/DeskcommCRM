@@ -210,4 +210,32 @@ describe("Composer + recursos pré-prontos", () => {
     // E o clique não enviou nada.
     expect(sendMock).not.toHaveBeenCalled();
   });
+
+  /**
+   * O `/` volta a abrir depois de um recurso de MÍDIA (medido na prova de tela
+   * do #2847, passo f). Escolher marca o menu como dispensado; com mídia o campo
+   * fica vazio sem passar pelo `onChange`, e o flag ficava preso: o `/` seguinte
+   * não abria nada até o operador digitar outra coisa. Vale pela barra (campo já
+   * vazio) e pelo próprio `/`.
+   */
+  it.each([
+    ["pela barra", () => fireEvent.click(screen.getByRole("button", { name: /áudio preço/i }))],
+    [
+      "pelo /",
+      () => {
+        fireEvent.change(screen.getByLabelText(/mensagem/i), { target: { value: "/áudio" } });
+        fireEvent.click(within(screen.getByRole("listbox")).getByText("Áudio preço"));
+      },
+    ],
+  ])("(f) depois de um recurso de áudio escolhido %s, o próximo `/` abre o menu", async (_, escolher) => {
+    renderComposer();
+
+    escolher();
+    const fila = await screen.findByRole("dialog");
+    fireEvent.click(within(fila).getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/mensagem/i), { target: { value: "/boas" } });
+    expect(within(screen.getByRole("listbox")).getByText("Boas vindas")).toBeInTheDocument();
+  });
 });

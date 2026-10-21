@@ -122,7 +122,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                         (#2526) se anuncia na lista: sem isto, quem usa o menu
                         "/" do composer não tem como saber qual script não é
                         só texto até escolher. */}
-                    {template.midias && template.midias.length > 0 && (
+                    {!ehRecursoDeAudio(template) && template.midias && template.midias.length > 0 && (
                       <Badge variant="neutral">
                         {t("Imagens")} {template.midias.length}
                       </Badge>
