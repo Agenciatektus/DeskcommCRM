@@ -138,3 +138,67 @@ describe("o elo que some sem barulho", () => {
     expect(fonte).toMatch(/media_size_bytes:\s*buffer\.length/);
   });
 });
+
+/**
+ * F2 (ADR-0006): o iPhone grava `audio/mp4` (AAC) — o Safari anterior ao 18.4
+ * não grava webm nem ogg. O WAHA converte sozinho, mas os canais oficiais só
+ * aceitam opus como nota de voz. Por isso, QUANDO o arquivo é uma nota de voz
+ * do gravador (`notaDeVoz`), tudo que não é ogg vira opus. Sem a marca, um m4a
+ * enviado por token segue intacto: uma música não pode virar opus mono de 24k.
+ */
+describe("nota de voz gravada no iPhone (F2)", () => {
+  it("com notaDeVoz, mp4/aac/m4a precisam converter; sem a marca, não", () => {
+    for (const m of ["audio/mp4", "audio/aac", "audio/x-m4a", "audio/mp4;codecs=mp4a.40.2"]) {
+      expect(precisaTranscodificar(m, true), m).toBe(true);
+      expect(precisaTranscodificar(m), m).toBe(false);
+    }
+  });
+
+  it("com notaDeVoz, ogg continua sem conversão — já é o destino", () => {
+    expect(precisaTranscodificar("audio/ogg;codecs=opus", true)).toBe(false);
+  });
+
+  it("com notaDeVoz, o que não é áudio não vira ffmpeg à toa", () => {
+    expect(precisaTranscodificar("application/pdf", true)).toBe(false);
+    expect(precisaTranscodificar("image/jpeg", true)).toBe(false);
+  });
+
+  it("AAC é REENCODADO em opus mono 24k: copiar o container não serve para AAC", async () => {
+    const run = vi.fn(async (args: string[], _cwd: string) => {
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(args[args.length - 1]!, Buffer.from("ogg-opus"));
+    });
+    const r = await transcodificarNotaDeVoz(
+      { buffer: Buffer.from("m4a"), mime: "audio/mp4", notaDeVoz: true },
+      { run },
+    );
+    const args = run.mock.calls[0]?.[0] ?? [];
+    expect(args).toEqual(expect.arrayContaining(["-c:a", "libopus", "-b:a", "24k", "-ac", "1", "-ar", "48000"]));
+    expect(args).not.toContain("copy");
+    expect(r).toMatchObject({ convertido: true, mime: VOICE_MIME });
+    expect(r.buffer.toString()).toBe("ogg-opus");
+  });
+
+  it("webm com notaDeVoz continua trocando só o container", async () => {
+    const run = vi.fn(async (_args: string[], _cwd: string) => {});
+    await transcodificarNotaDeVoz({ ...webm, notaDeVoz: true }, { run });
+    expect(run.mock.calls[0]?.[0]).toContain("copy");
+  });
+
+  it("ffmpeg falhando no AAC devolve o original — o WAHA segue convertendo sozinho", async () => {
+    const run = vi.fn(async () => {
+      throw new Error("ffmpeg_exit_1");
+    });
+    const entrada = { buffer: Buffer.from("m4a"), mime: "audio/mp4", notaDeVoz: true };
+    const r = await transcodificarNotaDeVoz(entrada, { run });
+    expect(r).toMatchObject({ convertido: false, mime: "audio/mp4" });
+    expect(r.buffer).toBe(entrada.buffer);
+  });
+
+  it("a rota de upload lê a marca com Zod e a repassa", () => {
+    const fonte = readFileSync("app/api/v1/conversations/[id]/media/route.ts", "utf8");
+    expect(fonte).toMatch(/z\.literal\("1"\)/);
+    expect(fonte).toMatch(/transcodificarNotaDeVoz\(\{[^}]*notaDeVoz/);
+  });
+});
+

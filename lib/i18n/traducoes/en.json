@@ -6180,6 +6180,7 @@
   "Campo 'agent_id' deve ser UUID válido.": "The 'agent_id' field must be a valid UUID.",
   "Campo 'file' ausente ou inválido.": "'file' field missing or invalid.",
   "Campo 'file' (multipart) obrigatório.": "'file' field (multipart) is required.",
+  "Campo 'nota_de_voz' inválido.": "Invalid 'nota_de_voz' field.",
   "Campo 'name' inválido (2-120 chars).": "'name' field invalid (2-120 chars).",
   "Canal não encontrado.": "Channel not found.",
   "Caso não encontrado.": "Case not found.",

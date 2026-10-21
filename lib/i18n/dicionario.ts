@@ -10848,6 +10848,7 @@ export const DICIONARIO: Traducoes = {
   "Campo 'agent_id' deve ser UUID válido.": { es: "El campo 'agent_id' debe ser un UUID válido." },
   "Campo 'file' ausente ou inválido.": { es: "Campo 'file' ausente o inválido." },
   "Campo 'file' (multipart) obrigatório.": { es: "Campo 'file' (multipart) obligatorio." },
+  "Campo 'nota_de_voz' inválido.": { es: "Campo 'nota_de_voz' inválido." },
   "Campo 'name' inválido (2-120 chars).": { es: "Campo 'name' inválido (2-120 caracteres)." },
   "Canal não encontrado.": { es: "Canal no encontrado." },
   "Caso não encontrado.": { es: "Caso no encontrado." },

@@ -4445,6 +4445,7 @@
   "Campo 'agent_id' deve ser UUID válido.": "字段 'agent_id' 必须是有效的 UUID。",
   "Campo 'file' ausente ou inválido.": "字段 'file' 缺失或无效。",
   "Campo 'file' (multipart) obrigatório.": "字段 'file'（multipart）为必填项。",
+  "Campo 'nota_de_voz' inválido.": "字段 'nota_de_voz' 无效。",
   "Campo 'name' inválido (2-120 chars).": "字段 'name' 无效（2-120 个字符）。",
   "Canal não encontrado.": "未找到渠道。",
   "Caso não encontrado.": "未找到工单。",
