@@ -13,7 +13,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RateLimitResult } from "@/lib/ai/dispatcher/rate-limit";
-import type { paraReproducaoAac as ParaReproducaoAac } from "@/lib/messaging/media/voice-transcode";
+import type * as VoiceTranscode from "@/lib/messaging/media/voice-transcode";
 
 const estado = vi.hoisted(() => ({
   usuario: { id: "usuario-1" } as { id: string } | null,
@@ -25,7 +25,7 @@ const estado = vi.hoisted(() => ({
 }));
 
 const converter = vi.hoisted(() =>
-  vi.fn<typeof ParaReproducaoAac>(async () => Buffer.from("mp4-aac")),
+  vi.fn<typeof VoiceTranscode.paraReproducaoAac>(async () => Buffer.from("mp4-aac")),
 );
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -76,7 +76,7 @@ vi.mock("@/lib/channels", () => ({
   resolveSessionRef: () => null,
 }));
 vi.mock("@/lib/messaging/media/voice-transcode", async (original) => ({
-  ...(await original<typeof import("@/lib/messaging/media/voice-transcode")>()),
+  ...(await original<typeof VoiceTranscode>()),
   paraReproducaoAac: converter,
 }));
 
