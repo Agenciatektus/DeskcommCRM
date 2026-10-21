@@ -119,10 +119,18 @@ const MARCA_DO_INBOX = "inboxProfundidade";
  * `popstate` devolve a lista pelo efeito de `idNaUrl` — o gesto do sistema e o
  * botão "‹ Conversas" passam a concordar.
  *
- * Sem marca (deep-link, clique no aviso, recarga) voltar troca a entrada no
- * lugar: a pilha não cresce, e o gesto do sistema não reabre a conversa que a
- * pessoa acabou de fechar. Uma navegação do próprio Next que descarte a marca
- * cai neste mesmo caminho — sem laço, sem pilha crescendo.
+ * Sem marca (deep-link, clique no aviso) voltar troca a entrada no lugar, e
+ * trocar de conversa também: a pilha não cresce, e o gesto do sistema não
+ * reabre a conversa que a pessoa acabou de fechar. Se a troca empilhasse, um
+ * link direto X seguido de "Transferir" para Y deixaria [X, lista], e o voltar
+ * do sistema reabriria X. Custo aceito: no computador, j/k depois de um link
+ * direto não deixa rastro no voltar do navegador.
+ *
+ * Uma navegação do próprio Next (`router.push`, ex.: `PainelIniciarConversa`,
+ * `ContactCard`) DESCARTA a marca — o roteador grava o próprio estado por
+ * cima. A entrada nasce sem marca, o "‹" troca no lugar e a pilha fica
+ * [lista, lista]: o voltar do sistema parece "não fazer nada" uma vez. É o
+ * preço de não reabrir conversa, não um laço.
  *
  * O Next 16 copia o estado interno dele para dentro do objeto passado ao
  * `pushState` (`copyNextJsInternalHistoryState`), então a marca sobrevive.
@@ -138,7 +146,8 @@ export function navegarNoInbox(
   const profundidade = typeof marca === "number" && marca > 0 ? marca : 0;
   if (para !== null) {
     const proxima = de === null ? 1 : profundidade > 0 ? profundidade + 1 : 0;
-    historia.pushState(proxima > 0 ? { [MARCA_DO_INBOX]: proxima } : null, "", url);
+    if (proxima > 0) historia.pushState({ [MARCA_DO_INBOX]: proxima }, "", url);
+    else historia.replaceState(null, "", url);
     return "trocou";
   }
   if (profundidade > 0) {

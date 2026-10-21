@@ -58,10 +58,25 @@ describe("navegarNoInbox", () => {
     expect(window.history.length).toBe(antes);
   });
 
-  it("conversa → conversa sem marca (atalho j/k depois de um deep-link) empilha como sempre, sem inventar profundidade", () => {
+  it("conversa → conversa sem marca troca a entrada no lugar, sem inventar profundidade", () => {
     window.history.replaceState(null, "", "/app/inbox?id=x");
-    navegarNoInbox("/app/inbox?id=y", "x", "y");
+    const antes = window.history.length;
+    expect(navegarNoInbox("/app/inbox?id=y", "x", "y")).toBe("trocou");
     expect(window.history.state).toBeNull();
+    expect(window.location.search).toBe("?id=y");
+    expect(window.history.length).toBe(antes);
+  });
+
+  it("link direto X → troca para Y → voltar: nenhuma entrada de X fica para o voltar do sistema reabrir", () => {
+    // O clique no aviso abre X; "Transferir para outro número" abre Y; o
+    // "‹ Conversas" troca no lugar. Se a troca X → Y empilhasse, a pilha
+    // ficaria [X, lista] e o voltar do sistema reabriria X.
+    window.history.replaceState(null, "", "/app/inbox?id=x");
+    const antes = window.history.length;
+    navegarNoInbox("/app/inbox?id=y", "x", "y");
+    navegarNoInbox("/app/inbox", "y", null);
+    expect(window.history.length).toBe(antes);
+    expect(window.location.search).toBe("");
   });
 });
 
