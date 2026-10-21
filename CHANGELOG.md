@@ -35,7 +35,7 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 - **As condições das automações ganham "não contém", "está vazio", "está preenchido", comparação por número/data e o grupo "qualquer uma"** A tela oferece novos operadores ("não contém", "está vazio", "está preenchido", maior/menor que) e um seletor por grupo: "todas as condições" ou "qualquer uma". As regras já gravadas continuam sendo lidas como "todas". O que muda nas regras com "não é" está no aviso acima.
 
-- **Campo personalizado pode exigir um formato, com a frase de erro que você escrever** Um campo do funil pode ganhar um formato esperado e a frase que aparece para quem digitar fora dele; o formulário, a API e o assistente de IA passam a conferi-lo. Sem essas propriedades, nada muda. Nada a fazer na atualização.
+- **Campo personalizado pode exigir um formato, com a frase de erro que você escrever** Um campo do funil pode ganhar um formato esperado e a frase que aparece para quem digitar fora dele; o formulário, a API e o assistente de IA passam a conferi-lo. Formulário de captação com valor fora do formato não perde o lead. Sem essas propriedades, nada muda. Nada a fazer na atualização.
 
   Contribuição de @webtecnica (#2814), a partir da issue #2730.
 
@@ -48,7 +48,7 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
   - Servidor montado sem o kit continua gerando o par à mão (`npx web-push generate-vapid-keys`).
   - O backup não leva o `.env`. Ao restaurar numa VPS nova, leve o `.env` junto para manter o par; sem ele, nasce um par novo e, se os avisos pararem de chegar, basta religá-los em Notificações.
 
-- **Prospecção mostra auditoria do site de cada empresa** Cada empresa da fila mostra a auditoria do site (veredito, o que falta, estratégia de abordagem) e uma prévia da mensagem, geradas em segundo plano. A prévia, inclusive a gerada sozinha sem ninguém revisar, vira o rascunho que o envio usa. Cada prévia consome crédito de IA, e há interruptores na busca para desligar a avaliação e a prévia. Nas campanhas que já existiam, a prévia fica desligada: ninguém passa a gastar crédito ao atualizar. Nada a fazer na VPS. Crédito: @paulolimajr77.
+- **Prospecção mostra auditoria do site de cada empresa** Cada empresa da fila mostra a auditoria do site (veredito, o que falta, estratégia de abordagem) e uma prévia da mensagem, geradas em segundo plano. A prévia, inclusive a gerada sozinha sem ninguém revisar, vira o rascunho que o envio usa, se o agente for o mesmo e o veredito do site não tiver mudado; quando a saída fica para a 2ª mensagem, a 1ª só cumprimenta. Cada prévia consome crédito de IA, e há interruptores na busca para desligar a avaliação e a prévia. Nas campanhas que já existiam, a prévia fica desligada: ninguém passa a gastar crédito ao atualizar. Nada a fazer na VPS. Crédito: @paulolimajr77.
 
 - **A prospecção deixa escolher quando oferecer a opção de parar de receber: na 1ª ou na 2ª mensagem** A campanha ganha a opção "Quando oferecer a opção de parar de receber", que nasce em "Na primeira mensagem (recomendado)". O bloqueio por "PARAR" vale desde a primeira mensagem em todos os modos. Nada muda para quem não mexer na opção. Crédito: @paulolimajr77
 
@@ -68,7 +68,7 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 - **Configuração de agenda organizada por serviço** A configuração da agenda separa Serviço, Horários, Google e Bloqueios em quatro abas. As reservas existentes e os agentes permanecem iguais.
 
-- **O pedido de exclusão avisa o titular por e-mail depois de apagar, e o rótulo de anonimizado não deriva mais do id** Em organizações fora do Brasil, o pedido de exclusão avisa o titular por e-mail depois de apagar (RGPD). No Brasil nada muda. O rótulo `Cliente Anonimizado #…` passa a usar um sufixo aleatório, com a mesma aparência.
+- **O pedido de exclusão avisa o titular por e-mail depois de apagar, e o rótulo de anonimizado não deriva mais do id** Em organizações fora do Brasil, o pedido de exclusão avisa o titular por e-mail depois de apagar (RGPD). No Brasil não há esse aviso. O rótulo `Cliente Anonimizado #…` passa a usar um sufixo aleatório, com a mesma aparência.
 
   Quem opera a instalação não precisa fazer nada: sem configuração nova e sem mudança de número de versão esperada além da atualização de sempre.
 
