@@ -98,8 +98,8 @@ describe("a opção tem tela e tem caminho de escrita", () => {
 describe("a opção fala os quatro idiomas", () => {
   const TEXTOS = [
     "Telefone informado pelo cliente entra sozinho na ficha sem número",
-    "Quando o cliente diz o telefone numa conversa e a ficha do contato está SEM número, o número é gravado na hora, em formato internacional (E.164), sem esperar alguém confirmar — e aparece na linha do tempo do contato. Nunca troca o número de quem já tem um: isso continua exigindo uma pessoa, como o e-mail, o nome e a data de nascimento. Vem desligada.",
-    "Ligado: o telefone de um cadastro sem número entra sozinho, e fica registrado na linha do tempo.",
+    "Quando o cliente diz o telefone numa conversa e a ficha do contato está SEM número, o número é gravado na hora, em formato internacional (E.164), sem esperar alguém confirmar — e aparece na linha do tempo do contato quando ele tem um negócio aberto. Nunca troca o número de quem já tem um: isso continua exigindo uma pessoa, como o e-mail, o nome e a data de nascimento. Vem desligada.",
+    "Ligado: o telefone de um cadastro sem número entra sozinho, e fica registrado na linha do tempo quando o contato tem um negócio aberto.",
     "Desligado: todo telefone informado vira proposta, como o resto do dado ouvido na conversa.",
     "Só um administrador da organização pode mudar esta opção.",
     "Opção salva.",

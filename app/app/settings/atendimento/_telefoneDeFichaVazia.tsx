@@ -72,12 +72,12 @@ export function TelefoneDeFichaVazia({
           </Label>
           <p className="max-w-2xl text-xs text-muted-foreground">
             {t(
-              "Quando o cliente diz o telefone numa conversa e a ficha do contato está SEM número, o número é gravado na hora, em formato internacional (E.164), sem esperar alguém confirmar — e aparece na linha do tempo do contato. Nunca troca o número de quem já tem um: isso continua exigindo uma pessoa, como o e-mail, o nome e a data de nascimento. Vem desligada.",
+              "Quando o cliente diz o telefone numa conversa e a ficha do contato está SEM número, o número é gravado na hora, em formato internacional (E.164), sem esperar alguém confirmar — e aparece na linha do tempo do contato quando ele tem um negócio aberto. Nunca troca o número de quem já tem um: isso continua exigindo uma pessoa, como o e-mail, o nome e a data de nascimento. Vem desligada.",
             )}
           </p>
           <p className="max-w-2xl text-xs" data-testid="telefone-de-ficha-vazia-estado">
             {valor
-              ? t("Ligado: o telefone de um cadastro sem número entra sozinho, e fica registrado na linha do tempo.")
+              ? t("Ligado: o telefone de um cadastro sem número entra sozinho, e fica registrado na linha do tempo quando o contato tem um negócio aberto.")
               : t("Desligado: todo telefone informado vira proposta, como o resto do dado ouvido na conversa.")}
           </p>
           {!podeMudar && (
