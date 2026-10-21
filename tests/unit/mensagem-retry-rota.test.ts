@@ -162,6 +162,16 @@ describe("POST /api/v1/messages/{id}/retry", () => {
     expect(state.audit).not.toHaveBeenCalled();
   });
 
+  it("erro que não é ApiError também devolve o estado lido, e é relançado", async () => {
+    state.handler.mockRejectedValueOnce(new Error("rede do banco caiu"));
+    await expect(POST(req(), ctx())).rejects.toThrow("rede do banco caiu");
+    const [, volta] = updates();
+    expect(volta, "a linha ficou queued sem motivo nem marca de falha").toBeDefined();
+    expect(volta!.payload).toMatchObject({ status: "failed", error_code: "channel_disabled" });
+    expect(volta!.eqs).toEqual(expect.arrayContaining([["status", "queued"], ["updated_at", "2026-10-21T12:00:01.000001+00:00"]]));
+    expect(state.audit).not.toHaveBeenCalled();
+  });
+
   it("audita message.retried", async () => {
     await POST(req({ confirmado: true }), ctx());
     expect(state.audit).toHaveBeenCalledWith(expect.objectContaining({

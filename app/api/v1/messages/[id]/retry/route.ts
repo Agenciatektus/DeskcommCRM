@@ -143,10 +143,11 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       internalMessageId: id,
     }, input);
   } catch (err) {
-    if (!(err instanceof ApiError)) throw err;
     // Recusa ANTES de tocar na linha (contato bloqueado, pessoal, citação de
-    // fora): devolve o estado lido. A mesma trava garante que, se o handler
-    // chegou a mexer na linha, nada é desfeito por cima.
+    // fora) ou erro inesperado: devolve o estado lido. Qualquer erro, e não só
+    // `ApiError` — sem isto a linha ficava `queued` sem motivo, sem marca de
+    // falha na tela. A mesma trava garante que, se o handler chegou a mexer na
+    // linha, nada é desfeito por cima.
     await supabase.from("messages")
       .update({
         status: lida.status,
@@ -158,6 +159,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       })
       .eq("id", id).eq("organization_id", orgId)
       .eq("status", "queued").eq("updated_at", travada.updated_at);
+    if (!(err instanceof ApiError)) throw err;
     return fail(err.code, err.message, err.status, { requestId });
   }
 
