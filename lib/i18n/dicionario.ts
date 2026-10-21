@@ -8518,6 +8518,9 @@ export const DICIONARIO: Traducoes = {
   "Não foi possível enviar o aviso ao titular.": {
     es: "No fue posible enviar el aviso al titular.",
   },
+  "O aviso do art. 12.º vale só para organizações fora do Brasil.": {
+    es: "El aviso del art. 12 solo vale para organizaciones fuera de Brasil.",
+  },
   "abaixo.": { es: "abajo." },
   "Confirmação": { es: "Confirmación" },
   "Anonimizando…": { es: "Anonimizando…" },

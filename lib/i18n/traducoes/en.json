@@ -6309,6 +6309,7 @@
   "O pedido já foi encerrado — o aviso do art. 12.º só sai de pedido aberto.": "The request is already closed — the Art. 12 notice is only sent for an open request.",
   "O titular não tem e-mail para receber o aviso.": "The data subject has no email to receive the notice.",
   "E-mail não configurado na instalação.": "Email is not configured in this installation.",
+  "O aviso do art. 12.º vale só para organizações fora do Brasil.": "The Art. 12 notice is only for organizations outside Brazil.",
   "Não foi possível enviar o aviso ao titular.": "The notice could not be sent to the data subject.",
   "Só manager+ cria template compartilhado.": "Only manager+ can create a shared template.",
   "Só o autor ou manager+ pode apagar esta nota.": "Only the author or manager+ can delete this note.",

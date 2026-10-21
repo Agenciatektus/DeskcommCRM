@@ -2,11 +2,19 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
 /**
  * POST /api/v1/lgpd/requests/[id]/art12
  *
- * O AVISO DE RECUSA OU PRORROGAÇÃO do art. 12.º do RGPD (n.os 3 e 4) — e o
- * mesmo dever em palavras brasileiras (LGPD art. 19, §§1 e 2). A norma manda
- * informar o titular, com o MOTIVO, no prazo de um mês contado do recebimento:
- * sem motivo escrito não há aviso nenhum a mandar, e é a própria rota que
- * recusa (`MotivoObrigatorio`/422) em vez de entregar e-mail pela metade.
+ * O AVISO DE RECUSA OU PRORROGAÇÃO do art. 12.º do RGPD (n.os 3 e 4). A norma
+ * manda informar o titular, com o MOTIVO, no prazo de um mês contado do
+ * recebimento: sem motivo escrito não há aviso nenhum a mandar, e é a própria
+ * rota que recusa (`MotivoObrigatorio`/422) em vez de entregar e-mail pela
+ * metade.
+ *
+ * ─── A PORTA É FECHADA PARA ORGANIZAÇÃO BRASILEIRA ──────────────────────────
+ *
+ * O aviso vale só para organizações FORA do Brasil (decisão de produto de
+ * 2026-10-16). Organização brasileira recebe a recusa ANTES de qualquer efeito
+ * — nenhum e-mail, `due_at` intacto e nenhum `lgpd.art12_notice_sent` —, e a
+ * recusa é o produto, não um erro. A guarda irmã, do aviso de apagamento, mora
+ * no worker.
  *
  * O TERCEIRO aviso do art. 12.º — o de apagamento concluído — não passa por
  * aqui: ele sai sozinho do worker de anonimização, depois que a cascata
@@ -29,6 +37,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { ok, fail } from "@/lib/api/wrappers";
+import { ApiErrorCodes } from "@/lib/api/errors";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import {
@@ -39,8 +48,9 @@ import {
   sendAvisoArt12,
 } from "@/lib/lgpd/avisos-do-artigo-12";
 import { EmailNotConfigured } from "@/lib/lgpd/email-delivery";
+import { diaDoPrazo } from "@/lib/lgpd/sla";
 import { marcaDaSaida } from "@/lib/branding/saida";
-import { perfilDaOrganizacao } from "@/lib/legal/perfil-do-pais";
+import { perfilDaOrganizacao, PAIS_PADRAO } from "@/lib/legal/perfil-do-pais";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -92,6 +102,26 @@ export async function POST(
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const orgId = authz.org.orgId;
   const admin = createAdminClient();
+
+  // ─── A PORTA FECHADA, ANTES DE TOCAR EM QUALQUER COISA ────────────────────
+  //
+  // O aviso do art. 12.º vale só para organizações FORA do Brasil (decisão de
+  // produto de 2026-10-16): no Brasil nada muda por enquanto, porque a promessa
+  // feita quando Portugal entrou foi "o Brasil fica exatamente igual", e texto
+  // jurídico com o artigo errado chegando a titular real é pior que nenhum
+  // texto. A recusa é o PRODUTO, não um erro — e ela vem ANTES de todo efeito:
+  // nenhum e-mail, `due_at` intacto e nenhum `lgpd.art12_notice_sent` gravado.
+  // Por isso o país é lido aqui, antes até do corpo da requisição; a guarda
+  // irmã, do worker de apagamento, mora em `workers/lgpd-redact-worker.ts`.
+  const perfil = await perfilDaOrganizacao(admin, orgId);
+  if (perfil.codigo === PAIS_PADRAO) {
+    return fail(
+      ApiErrorCodes.lgpd_art12_so_fora_do_brasil,
+      t("O aviso do art. 12.º vale só para organizações fora do Brasil."),
+      422,
+      { requestId },
+    );
+  }
 
   let rawBody: unknown;
   try {
@@ -173,10 +203,9 @@ export async function POST(
   const recebidoEm = new Date(pedido.received_at);
   const agora = new Date();
   const prazo = prazoDeUmMes(recebidoEm);
-  const [perfil, marca] = await Promise.all([
-    perfilDaOrganizacao(admin, orgId),
-    marcaDaSaida(orgId),
-  ]);
+  // O perfil já foi lido na guarda do país, no alto desta rota: UMA leitura só,
+  // e é ela que decide o idioma e a lei do aviso.
+  const marca = await marcaDaSaida(orgId);
 
   try {
     await sendAvisoArt12(
@@ -216,10 +245,19 @@ export async function POST(
 
   // A prorrogação empurra o prazo de resposta (n.º 5): nunca para TRÁS do que a
   // linha já prometia — um vencimento mais distante não encurta prazo de ninguém.
-  const novoPrazo =
-    kind === "extension" && prazoDeUmMes(agora).getTime() > new Date(pedido.due_at).getTime()
-      ? prazoDeUmMes(agora).toISOString()
-      : null;
+  //
+  // A comparação é entre DIAS CIVIS, pelo helper do dia, e não entre instantes: a
+  // coluna `due_at` guarda o DIA que o motor contou (meia-noite UTC), e comparar
+  // o instante de `prazoDeUmMes(agora)` com ele decidiria por horas do relógio —
+  // o mesmo dia apareceria como dia diferente. O valor GRAVADO volta à meia-noite
+  // UTC do dia novo, para a coluna seguir sendo um dia civil.
+  const diaDoNovoPrazo = diaDoPrazo(prazoDeUmMes(agora));
+  const diaDoPrazoAtual = diaDoPrazo(pedido.due_at);
+  const empurraOPrazo =
+    kind === "extension" &&
+    diaDoNovoPrazo !== null &&
+    (diaDoPrazoAtual === null || diaDoNovoPrazo > diaDoPrazoAtual);
+  const novoPrazo = empurraOPrazo ? `${diaDoNovoPrazo}T00:00:00.000Z` : null;
 
   const { error: updErr } = await admin
     .from("lgpd_requests")

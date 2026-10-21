@@ -40,15 +40,17 @@ vi.mock("@/lib/branding/saida", async (orig) => ({
   ...(await orig<typeof import("@/lib/branding/saida")>()),
   marcaDaSaida: vi.fn(async (): Promise<MarcaDeSaida> => marcaMock as unknown as MarcaDeSaida),
 }));
-vi.mock("@/lib/legal/perfil-do-pais", async (orig) => ({
-  ...(await orig<typeof import("@/lib/legal/perfil-do-pais")>()),
-  perfilDaOrganizacao: vi.fn(async (): Promise<PerfilDoPais> => ({ codigo: "BR" }) as PerfilDoPais),
-}));
+vi.mock("@/lib/legal/perfil-do-pais", async (orig) => {
+  const real = await orig<typeof import("@/lib/legal/perfil-do-pais")>();
+  // Portugal: é o país para quem o aviso existe (decisão de 2026-10-16). A
+  // guarda do BR mora no WORKER, e tem caso próprio em
+  // `tests/invariants/lgpd-aviso-do-artigo-12-so-fora-do-brasil.test.ts`.
+  return { ...real, perfilDaOrganizacao: vi.fn(async (): Promise<PerfilDoPais> => real.perfilDoPais("PT")) };
+});
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 import { logger } from "@/lib/logger";
 import { avisarTitularAposApagamento } from "@/lib/lgpd/aviso-apos-apagar";
-import { prazoDeUmMes } from "@/lib/lgpd/avisos-do-artigo-12";
 
 const ORG = "0657aaaa-0000-4000-8000-000000000001";
 const PEDIDO = "0657bbbb-0000-4000-8000-000000000001";
@@ -67,15 +69,17 @@ beforeEach(() => {
   vi.mocked(logger.warn).mockClear();
 });
 
-describe("o aviso de apagamento (art. 12.º, n.º 3 / LGPD art. 18)", () => {
+describe("o aviso de apagamento (art. 12.º, n.º 3 do RGPD)", () => {
   it("com e-mail, manda o aviso de APAGAMENTO pelo transporte da casa", async () => {
     const r = await avisarTitularAposApagamento(admin, pedido("titular@exemplo.test"));
 
     expect(r).toEqual({ enviado: true, motivo: null, mensagemId: "m1" });
     expect(enviados).toHaveLength(1);
     expect(enviados[0]!.to).toBe("titular@exemplo.test");
-    expect(enviados[0]!.subject).toContain("Seus dados pessoais foram apagados");
-    expect(enviados[0]!.html).toContain("LGPD Lei nº 13.709/2018");
+    expect(enviados[0]!.subject).toContain("O seu pedido de dados pessoais foi atendido");
+    // O rótulo vem do PERFIL (Portugal declara "Direito exercido"), e não de um
+    // "Base legal:" fixo — o mesmo caminho do e-mail de exportação.
+    expect(enviados[0]!.html).toContain("Direito exercido: RGPD art. 15.º");
     expect(enviados[0]!.tags).toContainEqual({ name: "kind", value: "lgpd_art12_apagamento" });
     expect(enviados[0]!.tags).toContainEqual({ name: "request_short", value: "0657bbbb" });
   });
@@ -88,7 +92,7 @@ describe("o aviso de apagamento (art. 12.º, n.º 3 / LGPD art. 18)", () => {
   });
 
   it("transporte fora do ar NÃO derruba o pedido, e não joga o endereço no log", async () => {
-    roteador.resposta = { ok: false, error: "not_configured" };
+    roteador.resposta = { ok: false, error: "http_500" };
 
     const r = await avisarTitularAposApagamento(admin, pedido("titular@exemplo.test"));
 
@@ -102,9 +106,19 @@ describe("o aviso de apagamento (art. 12.º, n.º 3 / LGPD art. 18)", () => {
     expect(registro).toContain("0657bbbb");
   });
 
+  it("instalação sem transporte diz `email_nao_configurado` — o dono resolve isso, e não a rede", async () => {
+    roteador.resposta = { ok: false, error: "not_configured" };
+
+    const r = await avisarTitularAposApagamento(admin, pedido("titular@exemplo.test"));
+
+    // O motivo vai para `art12_notice` no pedido e na auditoria: "não configurado"
+    // e "falhou no envio" pedem ações diferentes de quem opera a instalação.
+    expect(r).toEqual({ enviado: false, motivo: "email_nao_configurado", mensagemId: null });
+  });
+
   it("o prazo afirmado no aviso é o do RECEBIMENTO do pedido", async () => {
     await avisarTitularAposApagamento(admin, pedido("titular@exemplo.test"));
-    expect(enviados[0]!.text).toContain(prazoDeUmMes(RECEBIDO).toLocaleDateString("pt-BR"));
+    expect(enviados[0]!.text).toContain("10/10/2026");
   });
 });
 
@@ -130,6 +144,14 @@ describe("a ordem no worker: ler o endereço ANTES de apagar, avisar DEPOIS", ()
   });
 
   it("o resultado do aviso entra no resultado do pedido, não num log perdido", () => {
-    expect(fonte).toContain("art12_notice: aviso.enviado ? \"sent\" : aviso.motivo");
+    expect(fonte).toContain('const art12Notice = aviso ? (aviso.enviado ? "sent" : aviso.motivo) : null;');
+  });
+
+  it("o worker pergunta o PAÍS antes de decidir o envio — e é aqui que a guarda mora", () => {
+    // Sabotagem escrita como asserção: apagar esta linha devolve o aviso ao
+    // Brasil, e o caso do lado brasileiro
+    // (`tests/invariants/lgpd-aviso-do-artigo-12-so-fora-do-brasil.test.ts`)
+    // fica vermelho.
+    expect(fonte).toContain("const avisaTitular = perfil.codigo !== PAIS_PADRAO;");
   });
 });

@@ -28,6 +28,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { marcaDaSaida } from "@/lib/branding/saida";
 import { perfilDaOrganizacao } from "@/lib/legal/perfil-do-pais";
 import { logger } from "@/lib/logger";
+import { EmailNotConfigured } from "@/lib/lgpd/email-delivery";
 import { prazoDeUmMes, sendAvisoArt12 } from "@/lib/lgpd/avisos-do-artigo-12";
 
 export interface PedidoDeAviso {
@@ -76,12 +77,18 @@ export async function avisarTitularAposApagamento(
 
     return { enviado: true, motivo: null, mensagemId: messageId };
   } catch (err) {
+    // O MOTIVO distingue o que quem opera pode consertar: instalação sem
+    // transporte configurado não é a mesma falha de rede que um envio que
+    // voltou com erro — o dono da instalação resolve uma e só espera a outra.
+    // É este `motivo` que vira `art12_notice` no pedido e na auditoria.
+    const motivo = err instanceof EmailNotConfigured ? "email_nao_configurado" : "falha_no_envio";
     // Só o HASH da mensagem: o endereço do titular não entra em log nenhum.
     logger.warn("[lgpd] aviso do art. 12.º após o apagamento não saiu", {
       organization_id: pedido.organizationId,
       request_short: pedido.requestId.slice(0, 8),
+      motivo,
       erro: err instanceof Error ? err.message : String(err),
     });
-    return { enviado: false, motivo: "falha_no_envio", mensagemId: null };
+    return { enviado: false, motivo, mensagemId: null };
   }
 }

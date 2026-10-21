@@ -4551,6 +4551,7 @@
   "O pedido já foi encerrado — o aviso do art. 12.º só sai de pedido aberto.": "请求已结束——第 12 条通知只会发给仍在处理中的请求。",
   "O titular não tem e-mail para receber o aviso.": "数据主体没有可接收通知的电子邮箱。",
   "E-mail não configurado na instalação.": "本安装未配置电子邮件。",
+  "O aviso do art. 12.º vale só para organizações fora do Brasil.": "第12条通知仅适用于巴西境外的组织。",
   "Não foi possível enviar o aviso ao titular.": "无法向数据主体发送通知。",
   "Só manager+ cria template compartilhado.": "仅经理及以上可创建共享模板。",
   "Só o autor ou manager+ pode apagar esta nota.": "仅作者或经理及以上可删除此备注。",

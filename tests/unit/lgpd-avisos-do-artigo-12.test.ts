@@ -6,20 +6,29 @@
  * A triagem mediu que a anonimização terminava em silêncio: o pedido de exclusão era
  * cumprido, o SLA marcava D+15, e o titular não recebia NADA. O art. 12.º, n.º 3 do RGPD
  * obriga a informar depois de apagar; os n.ºs 3 e 4 obrigam a informar a recusa — ou a
- * prorrogação, com o MOTIVO — no prazo de um mês. O Brasil diz o mesmo: LGPD art. 18, I
- * (eliminação), art. 19, §1 (confirmação ou negativa) e art. 19, §2 (prorrogação justificada).
+ * prorrogação, com o MOTIVO — no prazo de um mês.
+ *
+ * ─── O texto é UM só, e é o de fora do Brasil ────────────────────────────────────────────────
+ *
+ * Decisão de produto de 2026-10-16: os avisos novos valem só para organizações FORA do Brasil.
+ * O ramo brasileiro do texto (o antigo `mensagemDoBrasil`, com a LGPD citada artigo por artigo)
+ * saiu inteiro deste módulo — o texto brasileiro fica para uma revisão própria. Quem impede uma
+ * organização brasileira de chegar aqui é o worker (que não chama o aviso de apagamento) e a rota
+ * do art. 12.º (que recusa antes de tocar em qualquer coisa), e os dois têm caso próprio.
  *
  * ─── O que este arquivo mede ─────────────────────────────────────────────────────────────────
  *
- *   1. o prazo de um mês é contado do recebimento, e o AVISO afirma tê-lo cumprido;
+ *   1. o prazo de um mês é contado do recebimento, e o AVISO afirma tê-lo cumprido — mas só
+ *      quando cumpriu: fora do prazo a frase muda (o e-mail não mente sobre o prazo);
  *   2. recusa e prorrogação SEM motivo LANÇAM — a rota responde 422 em vez de mandar um
  *      e-mail pela metade (`MotivoObrigatorio`);
- *   3. o texto do Brasil cita a LGPD com número de artigo, e o de Portugal NÃO a cita
- *      (mesma régua do `lib/lgpd/email-delivery.ts`, doc 88): um titular português lendo
- *      "LGPD art. 18" é o defeito que o e-mail de exportação já consertou;
+ *   3. o texto é `pt-PT`, sem LGPD, e o rótulo da linha da lei vem do PERFIL
+ *      (`lei.rotuloNoDocumento`, como no e-mail de exportação), não de um "Base legal:" fixo;
  *   4. o motivo entra ESCAPADO — o e-mail é HTML e o motivo vem do operador;
  *   5. nenhum texto carrega o nome do produto: o remetente é a marca de quem OPEROU.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { NEUTROS_DE_SAIDA, type MarcaDeSaida } from "@/lib/branding/saida";
@@ -43,14 +52,18 @@ const MARCA: MarcaDeSaida = {
 const RECEBIDO = new Date("2026-09-10T12:00:00Z");
 const PRAZO = prazoDeUmMes(RECEBIDO);
 
+/** O aviso de Portugal — o único país que chega a este módulo (ver o cabeçalho). */
 function aviso(Extra: Partial<AvisoArt12> = {}): AvisoArt12 {
   return {
     desfecho: "apagamento",
     requestId: "abcd1234-ef00-4000-8000-000000000000",
     marca: MARCA,
-    perfil: perfilDoPais("BR"),
+    perfil: perfilDoPais("PT"),
     prazoDeUmMes: PRAZO,
     recebidoEm: RECEBIDO,
+    // O envio acontece no dia seguinte ao recebimento: dentro do prazo, salvo
+    // quando o caso diz o contrário.
+    agora: new Date("2026-09-11T12:00:00Z"),
     ...Extra,
   };
 }
@@ -130,32 +143,71 @@ describe("recusa e prorrogação exigem o motivo escrito", () => {
   });
 });
 
-describe("o texto segue o país da organização (doc 88)", () => {
-  it("o Brasil cita a LGPD com artigo, e o aviso de apagamento diz que apagou", () => {
-    const t = montarAvisoArt12(aviso());
-    expect(t.subject).toContain("Seus dados pessoais foram apagados");
-    expect(t.html).toContain("LGPD Lei nº 13.709/2018");
-    expect(t.html).toContain("art. 18");
-    expect(t.html).toContain("irreversível");
-    expect(t.text).toContain("apagados");
+describe("o e-mail de apagamento é honesto quanto ao prazo", () => {
+  it("dentro do prazo: afirma o cumprimento, com a data-limite", () => {
+    const t = montarAvisoArt12(aviso({ agora: new Date("2026-09-20T12:00:00Z") }));
+
+    expect(t.html).toContain("dentro do prazo de um mês");
+    expect(t.text).toContain("dentro do prazo de um mês");
   });
 
-  it("Portugal fala em RGPD e NÃO cita LGPD — o mesmo titular lendo duas leis é o defeito", () => {
-    const t = montarAvisoArt12(aviso({ perfil: perfilDoPais("PT") }));
-    expect(t.html).toContain("O seu pedido");
+  it("fora do prazo: NÃO afirma cumprimento — diz quando o prazo terminou", () => {
+    // O prazo de um mês venceu em 10/10; a cascata terminou dez dias depois.
+    const t = montarAvisoArt12(aviso({ agora: new Date("2026-10-20T12:00:00Z") }));
+
+    expect(t.html, "o e-mail afirmou um prazo que ele não cumpriu").not.toContain(
+      "dentro do prazo",
+    );
+    expect(t.html).toContain("terminou em");
+    expect(t.text).not.toContain("dentro do prazo");
+    expect(t.text).toContain("terminou em");
+  });
+});
+
+describe("o texto é o de FORA do Brasil — o ramo brasileiro saiu inteiro", () => {
+  const fonte = readFileSync(join(process.cwd(), "lib", "lgpd", "avisos-do-artigo-12.ts"), "utf8");
+  /**
+   * O arquivo SEM COMENTÁRIOS.
+   *
+   * O cabeçalho do módulo ESCREVE o que saiu (nomeia o `mensagemDoBrasil` e o ramo
+   * pt-BR para quem for escrever o texto brasileiro na revisão própria), e caçar o
+   * literal na prosa reprovaria o próprio comentário que explica a decisão — a
+   * mesma armadilha que `vitest.cercas.ts` documenta. A régua é o CÓDIGO.
+   */
+  const codigo = fonte
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
+
+  it("não existe mais `mensagemDoBrasil` nem linha `pt-BR` no módulo", () => {
+    // A decisão de 2026-10-16 tirou o texto brasileiro DESTE arquivo inteiro, e é
+    // asserção de fonte de propósito: nenhuma frase brasileira pode voltar por
+    // descuido num rebase.
+    expect(codigo, "o ramo brasileiro do texto voltou").not.toContain("mensagemDoBrasil");
+    expect(codigo, "há linha em pt-BR no módulo do aviso").not.toContain("pt-BR");
+  });
+
+  it("o documento é pt-PT e o aviso de apagamento fala como Portugal fala", () => {
+    const t = montarAvisoArt12(aviso());
+
+    expect(t.html).toContain('<html lang="pt-PT">');
+    expect(t.subject).toContain("O seu pedido de dados pessoais foi atendido");
     expect(t.html).not.toContain("LGPD");
-    expect(t.subject).toContain("O seu pedido de dados pessoais");
     expect(t.text).toContain("O seu pedido");
   });
 
-  it("a recusa portuguesa traz a lei revisada quando o perfil tem, e a brasileira o art. 19", () => {
-    const br = montarAvisoArt12(aviso({ desfecho: "recusa", motivo: "pedido duplicado" }));
-    expect(br.html).toContain("art. 19");
-    const pt = montarAvisoArt12(
-      aviso({ desfecho: "recusa", motivo: "pedido duplicado", perfil: perfilDoPais("PT") }),
-    );
-    expect(pt.html).not.toContain("LGPD");
-    expect(pt.html).toContain("prazo de um mês");
+  it("o rótulo da linha da lei vem do PERFIL — `Direito exercido`, não `Base legal` fixo", () => {
+    const t = montarAvisoArt12(aviso({ desfecho: "recusa", motivo: "pedido duplicado" }));
+
+    expect(t.html).toContain("Direito exercido: RGPD art. 15.º");
+    expect(t.html, "o rótulo fixo voltou ao e-mail").not.toContain("Base legal");
+    expect(t.text).toContain("Direito exercido: RGPD art. 15.º");
+  });
+
+  it("país sem lei revisada não cita lei nenhuma — nem a brasileira", () => {
+    const t = montarAvisoArt12(aviso({ perfil: { ...perfilDoPais("PT"), lei: null } }));
+
+    expect(t.html).not.toContain("RGPD");
+    expect(t.html).not.toContain("Base legal");
   });
 
   it("nenhum texto leva o nome do produto — quem opera é a marca do cliente", () => {
