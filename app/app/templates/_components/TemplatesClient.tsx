@@ -24,6 +24,7 @@ import { Plus, PencilSimple, Trash } from "@/lib/ui/icons";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { useMessageTemplates, type MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
+import { ehRecursoDeAudio } from "@/lib/inbox/recursos";
 import { TemplateFormDialog } from "./TemplateFormDialog";
 
 const TEMPLATES_KEY = ["message-templates"];
@@ -116,7 +117,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                     <Badge variant={template.owner_user_id ? "neutral" : "default"}>
                       {t(template.owner_user_id ? "Pessoal" : "Compartilhado")}
                     </Badge>
-                    {template.tipo === "audio" && <Badge variant="neutral">🎧 {t("Áudio")}</Badge>}
+                    {ehRecursoDeAudio(template) && <Badge variant="neutral">🎧 {t("Áudio")}</Badge>}
                     {/* A resposta rápida que leva imagem do próprio operador
                         (#2526) se anuncia na lista: sem isto, quem usa o menu
                         "/" do composer não tem como saber qual script não é
@@ -128,7 +129,7 @@ export function TemplatesClient({ canShare, currentUserId }: Props) {
                     )}
                   </div>
                   <p className="line-clamp-2 text-sm text-muted-foreground">
-                    {template.tipo === "audio" ? t("Recurso de áudio") : template.body}
+                    {ehRecursoDeAudio(template) ? t("Recurso de áudio") : template.body}
                   </p>
                 </div>
                 {canModify(template) && (

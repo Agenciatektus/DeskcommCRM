@@ -22,9 +22,16 @@ import {
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import type { MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
-import type { TipoDeRecurso } from "@/lib/inbox/recursos";
+import { TIPOS_DE_RECURSO, type TipoDeRecurso } from "@/lib/inbox/recursos";
 import { useUploadTemplateMedia } from "@/hooks/templates/useUploadTemplateMedia";
-import { MAXIMO_DE_MIDIAS, TAMANHO_MAXIMO_DA_MIDIA, type MidiaDeTemplate } from "@/lib/templates/midias";
+import {
+  MAXIMO_DE_MIDIAS,
+  TAMANHO_MAXIMO_DA_MIDIA,
+  TAMANHO_MAXIMO_DO_AUDIO,
+  ehMidiaDeAudio,
+  midiaDeAudioDe,
+  type MidiaDeTemplate,
+} from "@/lib/templates/midias";
 
 const TEMPLATES_KEY = ["message-templates"];
 
@@ -40,10 +47,6 @@ interface CreateInput {
   body: string;
   shortcut?: string;
   shared?: boolean;
-  tipo: TipoDeRecurso;
-  media_path?: string;
-  media_mime?: string;
-  media_size_bytes?: number;
 }
 
 interface UpdateInput {
@@ -51,36 +54,23 @@ interface UpdateInput {
   title: string;
   body: string;
   shortcut: string | null;
-  tipo: TipoDeRecurso;
-  media_path: string | null;
-  media_mime: string | null;
-  media_size_bytes: number | null;
   midias?: MidiaDeTemplate[];
 }
 
-interface MidiaSubida {
-  storage_path: string;
-  media_mime: string;
-  media_size_bytes: number;
-}
-
 /**
- * Sobe o áudio do recurso e devolve o caminho no Storage. Rota própria
- * (`/message-templates/media`) porque o arquivo pertence à BIBLIOTECA, não a
- * uma conversa — o upload de mídia de conversa exige um `conversationId` que
- * aqui não existe.
+ * O FORMULÁRIO DO RECURSO (#2833 sobre a tela da #2526) — texto ou áudio.
+ *
+ * O que mudou no redesenho: o ÁUDIO não tem coluna, bucket nem rota próprios.
+ * Ele é uma entrada de `midias`, gravada pela MESMA rota que sobe as imagens
+ * (`POST /message-templates/:id/midias`), que gera o caminho, fareja os bytes e
+ * aplica o teto do tipo. Com isso o formulário também não tem upload paralelo:
+ * o arquivo de áudio sobe pelo `useUploadTemplateMedia`, igual a uma imagem.
+ *
+ * Consequência de desenho: o TIPO é um modo da TELA. Um recurso de áudio tem
+ * exatamente uma entrada de áudio em `midias` e nenhuma imagem; um de texto tem
+ * as imagens e nunca áudio. Trocar o modo AFASTA o que não pertence ao modo
+ * novo — o PATCH manda a lista completa e a rota apaga do bucket o que saiu.
  */
-async function subirAudio(file: File): Promise<MidiaSubida> {
-  const form = new FormData();
-  form.append("file", file, file.name);
-  const res = await fetch("/api/v1/message-templates/media", { method: "POST", body: form });
-  const json = (await res.json()) as { data?: MidiaSubida; error?: { message?: string } };
-  if (!res.ok || !json.data) {
-    throw new Error(json.error?.message ?? "Falha ao subir o áudio.");
-  }
-  return json.data;
-}
-
 export function TemplateFormDialog({ open, onOpenChange, canShare, template }: Props) {
   const t = useT();
   const isEdit = !!template;
@@ -89,15 +79,16 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
   const [shortcut, setShortcut] = React.useState("");
   const [shared, setShared] = React.useState(false);
   const [tipo, setTipo] = React.useState<TipoDeRecurso>("texto");
-  // O arquivo novo escolhido nesta edição; quando null, o recurso mantém o
-  // áudio que já tinha (template.media_path).
+  // O arquivo de áudio escolhido NESTA edição; quando null, o recurso continua
+  // com o áudio que já tem em `midias` (`audioAtual`).
   const [arquivo, setArquivo] = React.useState<File | null>(null);
-  const [subindo, setSubindo] = React.useState(false);
   /**
    * As IMAGENS da Resposta rápida (#2526) — três estados, e cada um tem um
    * motivo:
    *
-   *  `gravadas`  o que JÁ está no bucket e na linha (o template editado).
+   *  `gravadas`  o que JÁ está no bucket e na linha (o template editado). Só as
+   *              imagens: a entrada de áudio do recurso não é imagem e não
+   *              entra nesta lista.
    *  `removidas` o que o operador tirou NESTA edição: nada sai do bucket antes
    *              do Salvar — cancelar tem de devolver o template inteiro.
    *  `novas`     os arquivos escolhidos, que só sobem no Salvar (a rota gera o
@@ -121,7 +112,15 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
     onSuccess: () => qc.invalidateQueries({ queryKey: TEMPLATES_KEY }),
   });
   const upload = useUploadTemplateMedia();
-  const pending = create.isPending || update.isPending || upload.isPending || subindo;
+  const pending = create.isPending || update.isPending || upload.isPending;
+
+  /** A LISTA da linha, na ordem gravada — a posição é a URL da prévia. */
+  const listaDa = React.useMemo(
+    () => (template?.midias ?? []) as MidiaDeTemplate[],
+    [template],
+  );
+  /** A entrada de áudio do recurso editado, se houver (#2833). */
+  const audioAtual = midiaDeAudioDe(listaDa);
 
   const urlsNovas = React.useMemo(() => novas.map((file) => URL.createObjectURL(file)), [novas]);
   React.useEffect(
@@ -137,9 +136,9 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
     setBody(template?.body ?? "");
     setShortcut(template?.shortcut ?? "");
     setShared(template ? template.owner_user_id === null : false);
-    setTipo(template?.tipo ?? "texto");
+    setTipo(midiaDeAudioDe(template?.midias) ? "audio" : "texto");
     setArquivo(null);
-    setGravadas(template?.midias ?? []);
+    setGravadas(((template?.midias ?? []) as MidiaDeTemplate[]).filter((m) => !ehMidiaDeAudio(m)));
     setRemovidas([]);
     setNovas([]);
   }, [open, template]);
@@ -148,9 +147,14 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
   const total = mantidas.length + novas.length;
   const estourou = total > MAXIMO_DE_MIDIAS;
 
-  /** O preview da imagem JÁ gravada sai da própria rota de leitura. */
+  /**
+   * O preview da mídia JÁ gravada sai da própria rota de leitura. O índice é a
+   * POSIÇÃO na linha — inclusive quando há uma entrada de áudio antes das
+   * imagens: `gravadas` filtra o áudio, mas a rota serve por posição na lista
+   * do banco.
+   */
   function urlDaGravada(midia: MidiaDeTemplate): string {
-    const indice = gravadas.indexOf(midia);
+    const indice = listaDa.findIndex((m) => m.storage_path === midia.storage_path);
     return `/api/v1/message-templates/${template?.id}/midias/${indice}`;
   }
 
@@ -173,62 +177,75 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
     if (aceitas.length) setNovas((atual) => [...atual, ...aceitas]);
   }
 
+  function escolherAudio(lista: FileList | null) {
+    const file = lista?.[0] ?? null;
+    if (!file) {
+      setArquivo(null);
+      return;
+    }
+    // Aviso antes do upload; quem decide é a rota, pelos bytes. O teto é o do
+    // ÁUDIO (16 MB), não o da imagem.
+    if (!/^audio\//.test(file.type)) {
+      toast.error(t("O arquivo precisa ser de áudio."));
+      return;
+    }
+    if (file.size > TAMANHO_MAXIMO_DO_AUDIO) {
+      toast.error(t("O áudio precisa ter até 16 MB."));
+      return;
+    }
+    setArquivo(file);
+  }
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // O áudio precisa de um arquivo — o novo desta edição ou o que o recurso
-    // já tinha. Sem nenhum dos dois, o banco recusaria pelo CHECK.
-    const midiaExistente = template?.media_path ?? null;
-    if (tipo === "audio" && !arquivo && !midiaExistente) {
+    // Recurso de áudio precisa de um arquivo — o novo desta edição ou o que o
+    // recurso já tem. Sem nenhum dos dois não haveria conteúdo nenhum: nem
+    // texto (o modo áudio não tem campo) nem arquivo.
+    if (tipo === "audio" && !arquivo && !audioAtual) {
       toast.error(t("Escolha um arquivo de áudio para o recurso."));
       return;
     }
-    try {
-      let midia: MidiaSubida | null = null;
-      if (tipo === "audio" && arquivo) {
-        setSubindo(true);
-        try {
-          midia = await subirAudio(arquivo);
-        } finally {
-          setSubindo(false);
-        }
-      }
-      const media_path = tipo === "audio" ? (midia?.storage_path ?? midiaExistente) : null;
-      const media_mime = tipo === "audio" ? (midia?.media_mime ?? template?.media_mime ?? null) : null;
-      const media_size_bytes =
-        tipo === "audio" ? (midia?.media_size_bytes ?? template?.media_size_bytes ?? null) : null;
-      // Recurso de áudio não tem corpo: o conteúdo é o arquivo. Mandar texto
-      // vazio é o que o CHECK e o schema esperam.
-      const corpo = tipo === "audio" ? "" : body;
+    // Recurso de áudio não tem corpo: o conteúdo é o arquivo.
+    const corpo = tipo === "audio" ? "" : body;
 
+    try {
       if (isEdit) {
-        // 1) Remoção PRIMEIRO: o PATCH recebe a lista COMPLETA do que
-        //    permanece e a rota apaga do bucket o que saiu. Antes das novas
-        //    porque o teto de 5 vale a cada upload — trocar uma imagem num
-        //    template cheio daria 422 se a nova subisse antes da saída da
-        //    velha. Só manda `midias` quando algo saiu: um PATCH que reescreve
-        //    a lista sem mudar nada só arriscaria o `conflict` da tela atrasada.
+        // 1) A LISTA FINAL: `[áudio]` no recurso de áudio (vazio enquanto o
+        //    arquivo novo não subiu), as imagens mantidas no de texto. O PATCH
+        //    só manda `midias` quando algo SAI de verdade — reescrever a lista
+        //    sem mudança só arriscaria o `conflict` da tela atrasada. E a
+        //    remoção vem PRIMEIRO pelo mesmo motivo da #2526: o teto de 5 vale
+        //    a cada upload.
+        //
+        //    "Sai" é medido contra o que o FORM conhece (`gravadas` + a entrada
+        //    de áudio), não contra a prop `template`: no retry depois de um
+        //    upload que falhou, o form já sabe que a imagem removida saiu — a
+        //    prop ainda mostra a linha antiga.
+        const listaNova: MidiaDeTemplate[] =
+          tipo === "audio" ? (arquivo ? [] : audioAtual ? [audioAtual] : []) : mantidas;
+        const conhecidas: MidiaDeTemplate[] = audioAtual ? [...gravadas, audioAtual] : gravadas;
+        const sai = conhecidas.filter(
+          (m) => !listaNova.some((k) => k.storage_path === m.storage_path),
+        );
         await update.mutateAsync({
           id: template.id,
           title,
           body: corpo,
           shortcut: shortcut.trim() || null,
-          tipo,
-          media_path,
-          media_mime,
-          media_size_bytes,
-          ...(removidas.length ? { midias: mantidas } : {}),
+          ...(sai.length ? { midias: listaNova } : {}),
         });
-        if (removidas.length) {
-          setGravadas(mantidas);
+        if (sai.length) {
+          setGravadas(listaNova.filter((m) => !ehMidiaDeAudio(m)));
           setRemovidas([]);
         }
-        // 2) Imagem nova: a ROTA gera o caminho e devolve a lista já gravada.
-        //    Cada uma que sobe sai de `novas` e entra em `gravadas` NA HORA:
-        //    se a seguinte falhar, salvar de novo continua dela, sem subir
-        //    outra vez a que já entrou.
-        for (const file of novas) {
+        // 2) O ARQUIVO NOVO sobe pela MESMA rota das imagens (#2833): ela gera
+        //    e confere o caminho, e o teto do áudio é dela. A rota devolve a
+        //    lista completa já gravada.
+        const subir = tipo === "audio" ? (arquivo ? [arquivo] : []) : novas;
+        for (const file of subir) {
           const lista = await upload.mutateAsync({ templateId: template.id, file });
-          setGravadas(lista);
+          setGravadas(lista.filter((m) => !ehMidiaDeAudio(m)));
+          if (file === arquivo) setArquivo(null);
           setNovas((atual) => atual.filter((f) => f !== file));
         }
         toast.success(t("Recurso atualizado."));
@@ -238,17 +255,14 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
           body: corpo,
           shortcut: shortcut.trim() || undefined,
           shared: canShare ? shared : false,
-          tipo,
-          ...(media_path ? { media_path } : {}),
-          ...(media_mime ? { media_mime } : {}),
-          ...(media_size_bytes !== null ? { media_size_bytes } : {}),
         });
         // A partir daqui o template JÁ existe: deixar o diálogo aberto faria o
         // próximo clique criar um segundo. O `finally` fecha mesmo quando o
-        // upload falha — a imagem que não subiu entra pela edição, que é onde
+        // upload falha — a mídia que não subiu entra pela edição, que é onde
         // ela aparece de qualquer forma.
         try {
-          for (const file of novas) {
+          const subir = tipo === "audio" ? (arquivo ? [arquivo] : []) : novas;
+          for (const file of subir) {
             await upload.mutateAsync({ templateId: criado.data.id, file });
           }
         } finally {
@@ -276,7 +290,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
           <div className="space-y-2">
             <Label>{t("Tipo de recurso")}</Label>
             <div className="flex gap-1">
-              {(["texto", "audio"] as const).map((opcao) => (
+              {TIPOS_DE_RECURSO.map((opcao) => (
                 <Button
                   key={opcao}
                   type="button"
@@ -325,11 +339,22 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
                 id="tpl-audio"
                 type="file"
                 accept="audio/*"
-                onChange={(e) => setArquivo(e.target.files?.[0] ?? null)}
-                required={!template?.media_path}
+                onChange={(e) => escolherAudio(e.target.files)}
+                required={!audioAtual}
               />
+              {/* A prévia do áudio ATUAL sai da mesma rota das imagens (por
+                  posição): é o arquivo que o recurso já tem em `midias`. */}
+              {audioAtual && !arquivo && (
+                <audio
+                  controls
+                  preload="none"
+                  src={urlDaGravada(audioAtual)}
+                  className="h-9 w-full"
+                  aria-label={t("Áudio do recurso")}
+                />
+              )}
               <p className="text-xs text-muted-foreground">
-                {template?.media_path && !arquivo
+                {audioAtual && !arquivo
                   ? t("Áudio atual mantido. Escolha outro arquivo para substituir.")
                   : t("O áudio fica na biblioteca e entra no Inbox como anexo pendente.")}
               </p>
@@ -345,81 +370,83 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
               maxLength={40}
             />
           </div>
-          {/*
-            AS IMAGENS (#2526) — o operador carrega as dele, sem depender do
-            catálogo de produtos. Prévia e remoção existem porque a aprovação é
-            dele: o que entra na conversa tem de ser o que ele viu aqui.
-          */}
-          <div className="space-y-2">
-            <Label htmlFor="tpl-midias">{t("Imagens (opcional)")}</Label>
-            <p className="text-xs text-muted-foreground">
-              {t("JPG ou PNG, até 5 MB por imagem. A imagem vai junto com o texto.")}
-            </p>
-            {(mantidas.length > 0 || novas.length > 0) && (
-              <ul className="flex flex-wrap gap-2">
-                {mantidas.map((midia) => (
-                  <li key={midia.storage_path} className="relative">
-                    <img
-                      src={urlDaGravada(midia)}
-                      alt={t("Imagem da resposta rápida")}
-                      className="size-16 rounded-md border border-border object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setRemovidas((atual) => [...atual, midia.storage_path])}
-                      aria-label={t("Remover imagem")}
-                      className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="size-3" aria-hidden />
-                    </button>
-                  </li>
-                ))}
-                {novas.map((file, i) => (
-                  <li key={`${file.name}-${i}`} className="relative">
-                    <img
-                      src={urlsNovas[i]}
-                      alt={t("Prévia da imagem")}
-                      className="size-16 rounded-md border border-border object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setNovas((atual) => atual.filter((_, j) => j !== i))}
-                      aria-label={t("Remover imagem")}
-                      className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="size-3" aria-hidden />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="flex items-center gap-2">
-              <Input
-                id="tpl-midias"
-                type="file"
-                accept="image/jpeg,image/png"
-                multiple
-                className="sr-only"
-                onChange={(e) => {
-                  escolherArquivos(e.target.files);
-                  // Sem isto, escolher o MESMO arquivo duas vezes seguidas não
-                  // disparava `change` — e a segunda escolha some em silêncio.
-                  e.target.value = "";
-                }}
-              />
-              <Label
-                htmlFor="tpl-midias"
-                className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-1.5 text-sm hover:bg-muted"
-              >
-                {t("Adicionar imagem")}
-              </Label>
-              {estourou && (
-                <p className="text-xs text-destructive">
-                  {t("Cada resposta rápida tem no máximo 5 imagens.")}
-                </p>
+          {tipo === "texto" && (
+            /*
+              AS IMAGENS (#2526) — o operador carrega as dele, sem depender do
+              catálogo de produtos. Prévia e remoção existem porque a aprovação
+              é dele: o que entra na conversa tem de ser o que ele viu aqui.
+            */
+            <div className="space-y-2">
+              <Label htmlFor="tpl-midias">{t("Imagens (opcional)")}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t("JPG ou PNG, até 5 MB por imagem. A imagem vai junto com o texto.")}
+              </p>
+              {(mantidas.length > 0 || novas.length > 0) && (
+                <ul className="flex flex-wrap gap-2">
+                  {mantidas.map((midia) => (
+                    <li key={midia.storage_path} className="relative">
+                      <img
+                        src={urlDaGravada(midia)}
+                        alt={t("Imagem da resposta rápida")}
+                        className="size-16 rounded-md border border-border object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setRemovidas((atual) => [...atual, midia.storage_path])}
+                        aria-label={t("Remover imagem")}
+                        className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="size-3" aria-hidden />
+                      </button>
+                    </li>
+                  ))}
+                  {novas.map((file, i) => (
+                    <li key={`${file.name}-${i}`} className="relative">
+                      <img
+                        src={urlsNovas[i]}
+                        alt={t("Prévia da imagem")}
+                        className="size-16 rounded-md border border-border object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setNovas((atual) => atual.filter((_, j) => j !== i))}
+                        aria-label={t("Remover imagem")}
+                        className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="size-3" aria-hidden />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
+              <div className="flex items-center gap-2">
+                <Input
+                  id="tpl-midias"
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  multiple
+                  className="sr-only"
+                  onChange={(e) => {
+                    escolherArquivos(e.target.files);
+                    // Sem isto, escolher o MESMO arquivo duas vezes seguidas não
+                    // disparava `change` — e a segunda escolha some em silêncio.
+                    e.target.value = "";
+                  }}
+                />
+                <Label
+                  htmlFor="tpl-midias"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-1.5 text-sm hover:bg-muted"
+                >
+                  {t("Adicionar imagem")}
+                </Label>
+                {estourou && (
+                  <p className="text-xs text-destructive">
+                    {t("Cada resposta rápida tem no máximo 5 imagens.")}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
           {canShare && (
             <div className="flex items-center gap-2">
               <Switch
@@ -435,7 +462,7 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               {t("Cancelar")}
             </Button>
-            <Button type="submit" disabled={pending || estourou}>
+            <Button type="submit" disabled={pending || (tipo === "texto" && estourou)}>
               {isEdit ? t("Salvar") : t("Criar recurso")}
             </Button>
           </DialogFooter>

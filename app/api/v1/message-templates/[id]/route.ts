@@ -37,17 +37,17 @@ import { traduzir } from "@/lib/i18n/dicionario";
 import { logger } from "@/lib/logger";
 import { apagarMidiasDoTemplate } from "@/lib/templates/midias-no-bucket";
 import {
+  BUCKET_DAS_MIDIAS,
   conferirMidias,
+  midiaDeAudioDe,
   midiaPertenceAoTemplate,
   type MidiaDeTemplate,
 } from "@/lib/templates/midias";
 
 export const dynamic = "force-dynamic";
 const COLS =
-  "id, organization_id, owner_user_id, title, body, shortcut, tipo, media_path, media_mime, media_size_bytes, midias, created_by_user_id, created_at, updated_at";
+  "id, organization_id, owner_user_id, title, body, shortcut, midias, created_by_user_id, created_at, updated_at";
 
-/** Bucket dos arquivos de recurso (migration 0662). Espelha o `create table` do baseline. */
-const BUCKET_DE_RECURSOS = "recursos-media";
 /** TTL curto: o compositor assina na hora do clique e envia logo depois. */
 const VALIDADE_DA_ASSINATURA_S = 600;
 
@@ -57,9 +57,14 @@ interface RouteParams {
 
 /**
  * GET devolve a URL ASSINADA do áudio do recurso — nunca o arquivo nem o
- * caminho cru. Assinar pelo `admin` (service role) é o mesmo caminho do envio
- * de mídia por `media_url`: a guarda anti-SSRF do gateway reconhece, por
- * construção, uma URL assinada pelo próprio Storage desta instalação.
+ * caminho cru. O áudio é uma entrada de `midias` (#2833): o mesmo bucket
+ * privado `whatsapp-media` e o mesmo prefixo do template, e o caminho é
+ * conferido contra ele ANTES de assinar, porque a coluna é gravável pelo
+ * PostgREST.
+ *
+ * Assinar pelo `admin` (service role) é o mesmo caminho do envio de mídia por
+ * `media_url`: a guarda anti-SSRF do gateway reconhece, por construção, uma URL
+ * assinada pelo próprio Storage desta instalação.
  */
 export async function GET(_req: NextRequest, { params }: RouteParams): Promise<Response> {
   const requestId = randomUUID();
@@ -72,20 +77,23 @@ export async function GET(_req: NextRequest, { params }: RouteParams): Promise<R
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("message_templates")
-    .select("tipo, media_path, media_mime, media_size_bytes")
+    .select("midias")
     .eq("id", id)
     .eq("organization_id", org.orgId)
     .maybeSingle();
   if (error) return fail("internal_error", t("Erro ao ler o recurso."), 500, { requestId });
   if (!data) return fail("not_found", t("Recurso não encontrado."), 404, { requestId });
-  if (data.tipo !== "audio" || !data.media_path) {
+
+  const midias = (data as { midias: MidiaDeTemplate[] | null }).midias ?? [];
+  const audio = midiaDeAudioDe(midias);
+  if (!audio || !midiaPertenceAoTemplate(audio.storage_path, org.orgId, id)) {
     return fail("validation_failed", t("Este recurso não tem áudio."), 422, { requestId });
   }
 
   const admin = createAdminClient();
   const { data: assinada, error: signErr } = await admin.storage
-    .from(BUCKET_DE_RECURSOS)
-    .createSignedUrl(data.media_path, VALIDADE_DA_ASSINATURA_S);
+    .from(BUCKET_DAS_MIDIAS)
+    .createSignedUrl(audio.storage_path, VALIDADE_DA_ASSINATURA_S);
   if (signErr || !assinada?.signedUrl) {
     return fail("internal_error", t("Erro ao preparar o áudio do recurso."), 500, { requestId });
   }
@@ -93,8 +101,8 @@ export async function GET(_req: NextRequest, { params }: RouteParams): Promise<R
   return ok(
     {
       media_url: assinada.signedUrl,
-      media_mime: data.media_mime,
-      media_size_bytes: data.media_size_bytes,
+      media_mime: audio.media_mime,
+      media_size_bytes: audio.media_size_bytes,
     },
     { requestId },
   );

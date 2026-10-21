@@ -6,6 +6,11 @@ const sendMock = vi.fn();
 const postMock = vi.fn();
 const getMock = vi.fn();
 
+const TPL = "22222222-2222-4222-8222-222222222222";
+const ORG = "11111111-1111-4111-8111-111111111111";
+/** O caminho que a rota de upload gera: `<org>/templates/<template>/<uuid>.<ext>`. */
+const AUDIO_PATH = `${ORG}/templates/${TPL}/0a0b0c0d-0000-4000-8000-000000000001.ogg`;
+
 const RECURSOS = [
   {
     id: "r-texto",
@@ -13,21 +18,20 @@ const RECURSOS = [
     body: "Oi {{primeiro_nome}}, tudo bem?",
     shortcut: null,
     owner_user_id: null,
-    tipo: "texto",
-    media_path: null,
-    media_mime: null,
-    media_size_bytes: null,
+    midias: [],
   },
   {
+    // Recurso de ÁUDIO (#2833): não há coluna `tipo` — o áudio é uma entrada de
+    // `midias`, e é o CAMINHO dela (que a rota escolheu pelos bytes) que diz
+    // que este recurso é de áudio.
     id: "r-audio",
     title: "Áudio preço",
     body: "",
     shortcut: null,
     owner_user_id: null,
-    tipo: "audio",
-    media_path: "org/recursos/preco.ogg",
-    media_mime: "audio/ogg",
-    media_size_bytes: 1234,
+    midias: [
+      { storage_path: AUDIO_PATH, media_mime: "audio/ogg", media_size_bytes: 1234 },
+    ],
   },
 ];
 
@@ -58,7 +62,7 @@ vi.mock("@/hooks/auth/AuthProvider", () => ({
 
 import { Composer } from "@/components/inbox/Composer";
 import { BarraDeRecursos } from "@/components/inbox/composer/BarraDeRecursos";
-import { planoDoRecurso, type Recurso } from "@/lib/inbox/recursos";
+import { ehRecursoDeAudio, planoDoRecurso, type Recurso } from "@/lib/inbox/recursos";
 
 const CONV = "aaaaaaaa-3333-4000-8000-000000000001";
 const texto = RECURSOS[0] as unknown as Recurso;
@@ -93,8 +97,33 @@ describe("planoDoRecurso (puro)", () => {
     expect(plano.anexo).toMatchObject({
       recursoId: "r-audio",
       titulo: "Áudio preço",
-      media_path: "org/recursos/preco.ogg",
+      media_path: AUDIO_PATH,
       media_mime: "audio/ogg",
+    });
+  });
+
+  it("(c) quem decide que o recurso é de áudio é o CAMINHO, não o `media_mime` da linha", () => {
+    // A coluna é gravável pelo PostgREST: um `.ogg` com `media_mime` mentiroso
+    // continua sendo áudio (o caminho foi gravado pelo upload), e um `.jpg`
+    // marcado como áudio continua sendo imagem.
+    expect(
+      ehRecursoDeAudio({
+        midias: [{ storage_path: AUDIO_PATH, media_mime: "image/jpeg", media_size_bytes: 1 }],
+      }),
+    ).toBe(true);
+    const soImagem = {
+      midias: [
+        {
+          storage_path: `${ORG}/templates/${TPL}/0a0b0c0d-0000-4000-8000-000000000002.jpg`,
+          media_mime: "audio/ogg",
+          media_size_bytes: 1,
+        },
+      ],
+    };
+    expect(ehRecursoDeAudio(soImagem)).toBe(false);
+    expect(planoDoRecurso({ id: "r", title: "T", body: "oi", ...soImagem }, { name: null })).toEqual({
+      tipo: "texto",
+      texto: "oi",
     });
   });
 });

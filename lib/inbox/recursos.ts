@@ -8,15 +8,25 @@
  * envio. Este módulo descreve esse "plano" e NÃO tem nenhum caminho de envio:
  * quem manda é sempre um clique humano, separado.
  *
- * Reusa `message_templates` (o mesmo caminho de dados das respostas rápidas),
- * estendido com `tipo` e os campos de mídia pela migration 0662.
+ * ── Um recurso é uma linha de `message_templates` ──────────────────────────
+ *
+ * Texto mora no `body`; ÁUDIO é uma entrada de áudio em `midias` — o MESMO
+ * vocabulário de mídia da resposta rápida (#2526), no mesmo bucket privado e
+ * gravado pela MESMA rota (`POST /message-templates/:id/midias`). Não existe
+ * coluna, bucket nem rota próprios do áudio: era o desenho anterior, e o preço
+ * dele era um segundo caminho de mídia ao lado do primeiro.
+ *
+ * Por isso `tipo` NÃO é campo do modelo: quem responde se o recurso é de áudio
+ * é `midiaDeAudioDe`, lendo o CAMINHO do arquivo (que a rota escolheu pelos
+ * bytes) — nunca uma coluna que outra escrita pode contradizer.
  */
 import { interpolateTemplate, type TemplateContact } from "@/lib/inbox/template-vars";
+import { midiaDeAudioDe, type MidiaDeTemplate } from "@/lib/templates/midias";
 
 /**
- * Os tipos de recurso. Fonte única do vocabulário — espelhada pelo CHECK
- * `message_templates_tipo_check` no banco e coberta por
- * `tests/invariants/vocabulario-banco-x-typescript.test.ts`.
+ * Os tipos de recurso — vocabulário da TELA (o seletor do formulário e o ícone
+ * da barra). Não espelha coluna nenhuma do banco de propósito: o que existe no
+ * dado é a mídia; o tipo é a LEITURA dela.
  */
 export const TIPOS_DE_RECURSO = ["texto", "audio"] as const;
 export type TipoDeRecurso = (typeof TIPOS_DE_RECURSO)[number];
@@ -24,27 +34,24 @@ export type TipoDeRecurso = (typeof TIPOS_DE_RECURSO)[number];
 /**
  * O subconjunto de `message_templates` que o compositor precisa conhecer.
  *
- * `tipo` e os campos de mídia são OPCIONAIS de propósito, pela mesma razão de
- * `MessageTemplate`: linha anterior à migration 0662 (e fixture anterior a ela)
- * chega sem as chaves, e a ausência é "texto" — o default da coluna no banco.
+ * `midias` é opcional de propósito, pela mesma razão de `MessageTemplate`:
+ * linha anterior à migration 0643 (e fixture anterior a ela) chega sem a chave,
+ * e a ausência é "recurso de texto".
  */
 export interface Recurso {
   id: string;
   title: string;
   body: string;
-  tipo?: TipoDeRecurso;
-  media_path?: string | null;
-  media_mime?: string | null;
-  media_size_bytes?: number | null;
+  midias?: readonly MidiaDeTemplate[] | null;
 }
 
 /** Um áudio pronto para virar anexo pendente — descreve, não envia. */
 export interface AnexoDeRecurso {
   recursoId: string;
   titulo: string;
-  media_path: string | null;
-  media_mime: string | null;
-  media_size_bytes: number | null;
+  media_path: string;
+  media_mime: string;
+  media_size_bytes: number;
 }
 
 /**
@@ -61,20 +68,24 @@ export type PlanoDoRecurso =
   | { tipo: "texto"; texto: string }
   | { tipo: "audio"; anexo: AnexoDeRecurso };
 
-export function ehRecursoDeAudio(recurso: { tipo?: TipoDeRecurso }): boolean {
-  return recurso.tipo === "audio";
+/** O recurso é de ÁUDIO? A resposta sai da mídia, não de uma coluna `tipo`. */
+export function ehRecursoDeAudio(recurso: {
+  midias?: readonly MidiaDeTemplate[] | null;
+}): boolean {
+  return midiaDeAudioDe(recurso.midias) !== undefined;
 }
 
 export function planoDoRecurso(recurso: Recurso, contato: TemplateContact): PlanoDoRecurso {
-  if (ehRecursoDeAudio(recurso)) {
+  const audio = midiaDeAudioDe(recurso.midias);
+  if (audio) {
     return {
       tipo: "audio",
       anexo: {
         recursoId: recurso.id,
         titulo: recurso.title,
-        media_path: recurso.media_path ?? null,
-        media_mime: recurso.media_mime ?? null,
-        media_size_bytes: recurso.media_size_bytes ?? null,
+        media_path: audio.storage_path,
+        media_mime: audio.media_mime,
+        media_size_bytes: audio.media_size_bytes,
       },
     };
   }

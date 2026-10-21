@@ -33,7 +33,7 @@ export function BarraDeRecursos({ recursos, onEscolher, disabled = false }: Prop
           type="button"
           disabled={disabled}
           data-recurso-id={recurso.id}
-          data-recurso-tipo={recurso.tipo}
+          data-recurso-tipo={ehRecursoDeAudio(recurso) ? "audio" : "texto"}
           onClick={() => onEscolher(recurso)}
           title={t("Insere no campo — você edita e envia")}
           className="rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
