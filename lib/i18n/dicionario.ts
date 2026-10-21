@@ -10648,6 +10648,80 @@ export const DICIONARIO: Traducoes = {
   "Template criado.": { es: "Plantilla creada." },
   "Oi {{primeiro_nome}}, tudo bem?": { es: "Hola {{primeiro_nome}}, ¿todo bien?" },
   "Criar template": { es: "Crear plantilla" },
+  "Novo recurso": { es: "Nuevo recurso" },
+  "Editar recurso": { es: "Editar recurso" },
+  "Criar recurso": { es: "Crear recurso" },
+  "Recurso criado.": { es: "Recurso creado." },
+  "Recurso atualizado.": { es: "Recurso actualizado." },
+  "Recurso de áudio": { es: "Recurso de audio" },
+  "Arquivo de áudio": { es: "Archivo de audio" },
+  "Escolha um arquivo de áudio para o recurso.": { es: "Elija un archivo de audio para el recurso." },
+  "Áudio atual mantido. Escolha outro arquivo para substituir.": {
+    es: "Audio actual conservado. Elija otro archivo para reemplazarlo.",
+  },
+  "O áudio fica na biblioteca e entra no Inbox como anexo pendente.": {
+    es: "El audio queda en la biblioteca y entra en el Inbox como adjunto pendiente.",
+  },
+  "Recursos pré-prontos: o texto cai no campo editável do Inbox; o áudio vira anexo pendente.": {
+    es: "Recursos predefinidos: el texto cae en el campo editable del Inbox; el audio se convierte en adjunto pendiente.",
+  },
+  // ── "Respostas rápidas" é o nome ÚNICO da tela (#2833) ────────────────────
+  // A página dizia "Respostas rápidas", a lista dizia "Novo template" e o
+  // formulário dizia "Novo recurso" — três nomes para a mesma linha. As chaves
+  // abaixo são o nome novo; as antigas ("Novo recurso", "Novo template", ...)
+  // seguem no dicionário sem consumidor, de propósito: apagar entrada é passe
+  // próprio, e uma chave órfã não muda uma letra da tela.
+  "Nova resposta rápida": { es: "Nueva respuesta rápida" },
+  "Editar resposta rápida": { es: "Editar respuesta rápida" },
+  "Excluir resposta rápida": { es: "Eliminar respuesta rápida" },
+  "Criar resposta rápida": { es: "Crear respuesta rápida" },
+  "Nenhuma resposta rápida ainda.": { es: "Todavía no hay respuestas rápidas." },
+  "Resposta rápida de áudio": { es: "Respuesta rápida de audio" },
+  "Resposta rápida criada.": { es: "Respuesta rápida creada." },
+  "Resposta rápida atualizada.": { es: "Respuesta rápida actualizada." },
+  "Resposta rápida excluída.": { es: "Respuesta rápida eliminada." },
+  "Excluir esta resposta rápida?": { es: "¿Eliminar esta respuesta rápida?" },
+  "Tipo de resposta rápida": { es: "Tipo de respuesta rápida" },
+  "Áudio da resposta rápida": { es: "Audio de la respuesta rápida" },
+  "Escolha um arquivo de áudio para a resposta rápida.": {
+    es: "Elija un archivo de audio para la respuesta rápida.",
+  },
+  "O áudio fica na biblioteca e entra no Inbox na fila de anexos, como o `/`.": {
+    es: "El audio queda en la biblioteca y entra en el Inbox en la cola de adjuntos, como el `/`.",
+  },
+  "Respostas rápidas: o texto cai no campo editável do Inbox; a imagem e o áudio entram na fila de anexos, com prévia, e você revisa antes de enviar.":
+    {
+      es: "Respuestas rápidas: el texto cae en el campo editable del Inbox; la imagen y el audio entran en la cola de adjuntos, con vista previa, y tú revisas antes de enviar.",
+    },
+  "Prepara no compositor — você revisa e envia": {
+    es: "Prepara en el compositor — tú revisas y envías",
+  },
+  "Recursos": { es: "Recursos" },
+  "Insere no campo — você edita e envia": { es: "Inserta en el campo — tú editas y envías" },
+  "áudio pendente; você decide quando enviar": {
+    es: "audio pendiente; tú decides cuándo enviar",
+  },
+  "Remover áudio pendente": { es: "Quitar audio pendiente" },
+  "Não foi possível preparar o áudio do recurso.": {
+    es: "No se pudo preparar el audio del recurso.",
+  },
+  "Áudio do recurso": { es: "Audio del recurso" },
+  "O arquivo precisa ser de áudio.": { es: "El archivo debe ser de audio." },
+  "O áudio precisa ser OGG, MP3, AAC, AMR ou WAV.": {
+    es: "El audio debe ser OGG, MP3, AAC, AMR o WAV.",
+  },
+  "O áudio precisa ter até 16 MB.": { es: "El audio no debe superar los 16 MB." },
+  "Cada resposta rápida tem no máximo 5 mídias.": {
+    es: "Cada respuesta rápida admite un máximo de 5 medios.",
+  },
+  "A mídia passou do tamanho máximo aceito.": {
+    es: "El medio supera el tamaño máximo aceptado.",
+  },
+  "A mídia precisa ser JPG, PNG ou áudio (OGG, MP3, AAC, AMR ou WAV).": {
+    es: "El medio debe ser JPG, PNG o audio (OGG, MP3, AAC, AMR o WAV).",
+  },
+  "Este recurso não tem áudio.": { es: "Este recurso no tiene audio." },
+  "Erro ao ler o recurso.": { es: "Error al leer el recurso." },
   "Nova execução iniciada.": { es: "Nueva ejecución iniciada." },
   "Execução concluída.": { es: "Ejecución concluida." },
   "Orçamento atualizado": { es: "Presupuesto actualizado" },
