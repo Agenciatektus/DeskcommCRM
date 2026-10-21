@@ -492,6 +492,9 @@ export function blocoDeEstrategiaParaAgente(estrategia: EstrategiaDoLead): strin
  * diferente de `first_message`): a primeira mensagem só cumprimenta e confirma
  * a empresa. A frase entra logo depois dos critérios, no mesmo lugar em que o
  * worker a punha antes de a prévia e o envio dividirem esta função.
+ * Nesse modo nem a estratégia nem a auditoria entram (a estratégia é ângulo de
+ * venda): é a definição do modo na spec do #3091, mantida pelo doc 170 = B. Os
+ * chamadores tiram a auditoria dos dados com o mesmo booleano.
  */
 export function instrucaoDeAbordagemFria(
   instruction: string,
@@ -511,7 +514,7 @@ export function instrucaoDeAbordagemFria(
   // Voz do vendedor (settings da org): some à moldura, nunca aos dados.
   // Vazia = byte a byte igual ao sem-voz (o par tela×ferramenta não sente).
   const comVoz = voz ? `${base}\n${voz}` : base;
-  if (!estrategia) return comVoz;
+  if (!estrategia || soCumprimenta) return comVoz;
   return `${comVoz}\n${blocoDeEstrategiaParaAgente(estrategia)}`;
 }
 

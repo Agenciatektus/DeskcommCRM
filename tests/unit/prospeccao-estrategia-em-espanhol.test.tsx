@@ -191,17 +191,19 @@ describe("sem tradutor, o texto é o de antes (o que o agente recebe)", () => {
     expect(bloco).toContain("Ângulo: O site NÃO ABRE — quem clica encontra erro.");
   });
 
-  it("saída na 2ª mensagem: a frase de só cumprimentar vem logo depois dos critérios, antes da estratégia", () => {
+  it("saída na 2ª mensagem: a frase de só cumprimentar vem logo depois dos critérios, e a estratégia fica fora", () => {
     const estrategia = montarEstrategia({ ...base, classe: "fora-do-ar" });
     const frase =
       "Esta primeira mensagem NÃO apresenta serviço, preço nem proposta: só cumprimenta e confirma se falou com a empresa certa.";
     const comFrase = instrucaoDeAbordagemFria("Seja cordial.", "tem site", "Voz: direta.", estrategia, true);
-    expect(comFrase).toContain(`Critérios a confirmar durante a conversa: tem site\n${frase}\nVoz: direta.\n`);
-    expect(comFrase.indexOf(frase)).toBeLessThan(comFrase.indexOf("Estratégia de abordagem"));
-    // Sem o modo, nada muda: a mesma instrução de antes, sem a frase.
+    expect(comFrase).toContain(`Critérios a confirmar durante a conversa: tem site\n${frase}\nVoz: direta.`);
+    // A estratégia é ângulo de venda: nesse modo ela não entra (doc 170 = B, spec do #3091).
+    expect(comFrase).not.toContain("Estratégia de abordagem");
+    expect(comFrase).toBe(instrucaoDeAbordagemFria("Seja cordial.", "tem site", "Voz: direta.", null, true));
+    // Sem o modo, nada muda: a estratégia entra e a frase não.
     const semFrase = instrucaoDeAbordagemFria("Seja cordial.", "tem site", "Voz: direta.", estrategia);
     expect(semFrase).not.toContain(frase);
-    expect(semFrase).toBe(comFrase.replace(`\n${frase}`, ""));
+    expect(semFrase).toContain("Estratégia de abordagem");
   });
 
   it("chamar sem tradutor é o mesmo que passar a identidade, em toda a matriz", () => {

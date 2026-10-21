@@ -337,6 +337,53 @@ describe("gradual outreach", () => {
     const instrucao = mocks.generate.mock.calls[0]?.[2]?.instrucao as string;
     expect(instrucao).not.toContain("NÃO apresenta serviço");
   });
+
+  it("modo second_message: os dados da 1ª mensagem não levam Auditoria, Detalhe nem Rascunho", async () => {
+    // Auditoria definitiva + prévia válida do MESMO agente: no modo da 1ª, as três
+    // chaves entram (controle); no da 2ª, a 1ª mensagem só cumprimenta e nenhuma
+    // entra — o prompt frio deixa citar a Auditoria "como o motivo do contato".
+    const verificadoEm = new Date().toISOString();
+    const auditado = {
+      ...candidate,
+      data: {
+        name: "Example",
+        socials: [],
+        website: "https://example.test/",
+        site: {
+          ver: 1,
+          classe: "fora-do-ar",
+          problemas: ["http-503"],
+          checklist: { tem: [], falta: [] },
+          final_url: "https://example.test/",
+          http_status: 503,
+          tempo_ms: 300,
+          conteudo_resumo: "Página de erro do servidor",
+          pagespeed: null,
+          verificado_em: verificadoEm,
+          provisorio: false,
+          tentativas: 0,
+        },
+        previa: {
+          texto: "RASCUNHO-COM-OFERTA",
+          baseada_em: `fora-do-ar@${verificadoEm}`,
+          gerada_em: verificadoEm,
+          agente_id: id,
+        },
+      },
+    };
+    const dadosDoModo = async (modo: "first_message" | "second_message") => {
+      vi.clearAllMocks();
+      mocks.generate.mockResolvedValue({ ok: true, texto: "Olá. Falo com a Example?" });
+      const comModo = { ...campaign, config: { ...campaign.config, exit_offer: modo } } as Campaign;
+      await sendNextCandidate({} as never, database(undefined, auditado) as never, {} as never, comModo);
+      return mocks.generate.mock.calls[0]?.[2]?.dados as Record<string, string>;
+    };
+    const primeira = await dadosDoModo("first_message");
+    expect(Object.keys(primeira)).toEqual(expect.arrayContaining(["Auditoria", "Detalhe", "Rascunho de abordagem"]));
+    const segunda = await dadosDoModo("second_message");
+    expect(segunda["Empresa"]).toBe("Example");
+    for (const chave of ["Auditoria", "Detalhe", "Rascunho de abordagem"]) expect(segunda).not.toHaveProperty(chave);
+  });
 });
 
 /*

@@ -286,6 +286,10 @@ export async function sendNextCandidate(
           status: p.status,
         })
       : null;
+    // Modo "saída na 2ª": a 1ª mensagem só cumprimenta, então nada de ângulo de
+    // venda — nem estratégia (na instrução) nem Auditoria/Detalhe/Rascunho (nos
+    // dados), que o prompt frio deixa citar "como o motivo do contato".
+    const soCumprimenta = cfg.exit_offer !== "first_message";
     const generated = await gerarAbordagemDeFormulario(pool, llmEdgeConfigFromEnv(env), {
       tenantId: c.organization_id,
       agentId: cfg.agent_id,
@@ -295,14 +299,16 @@ export async function sendNextCandidate(
         cfg.qualification,
         blocoVozVendedor(personalizacao) || undefined,
         estrategia,
-        cfg.exit_offer !== "first_message",
+        soCumprimenta,
       ),
       origem: "Pesquisa de empresas",
       // NÃO é `automacao`: a pessoa não entrou em funil nenhum. O prompt do
       // ramo frio é o único que proíbe afirmar preenchimento — ver blocoDeModo.
       origemDaAbordagem: "prospeccao_fria",
       // Fonte única em `montarDadosDeAbordagem` (prévia da tela bebe da mesma).
-      dados: montarDadosDeAbordagem(p.data, site, previaDoAgente(p.data, cfg.agent_id)),
+      dados: soCumprimenta
+        ? montarDadosDeAbordagem(p.data, null, null)
+        : montarDadosDeAbordagem(p.data, site, previaDoAgente(p.data, cfg.agent_id)),
     });
     if (!generated.ok)
       // DO CANDIDATO: o modelo não produziu texto para ESTES dados.

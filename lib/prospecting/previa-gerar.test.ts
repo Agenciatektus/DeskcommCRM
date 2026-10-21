@@ -156,6 +156,28 @@ describe("gerarPreviaDoCandidato", () => {
     expect(mocks.generate).not.toHaveBeenCalled();
   });
 
+  it("saída na 2ª mensagem: sem Auditoria nem Detalhe nos dados, e sem a estratégia na instrução", async () => {
+    // Igual ao envio (worker.ts): nesse modo a 1ª mensagem só cumprimenta.
+    const fora = {
+      ...DADOS,
+      site: { ...SITE_OK, classe: "fora-do-ar", problemas: ["http-503"], conteudo_resumo: "Página de erro" },
+    } as unknown as Prospect;
+    const chamada = async (exit_offer: "first_message" | "second_message") => {
+      mocks.generate.mockClear();
+      const r = await gerarPreviaDoCandidato(pool, ORG, linha({ data: fora, config: { ...CONFIG, exit_offer } }));
+      expect(r.ok).toBe(true);
+      return mocks.generate.mock.calls[0]![2] as { dados: Record<string, string>; instrucao: string };
+    };
+    const primeira = await chamada("first_message");
+    expect(primeira.dados["Auditoria"]).toBeTruthy();
+    expect(primeira.dados["Detalhe"]).toBe("Página de erro");
+    expect(primeira.instrucao).toContain("Estratégia de abordagem");
+    const segunda = await chamada("second_message");
+    expect(segunda.dados).not.toHaveProperty("Auditoria");
+    expect(segunda.dados).not.toHaveProperty("Detalhe");
+    expect(segunda.instrucao).not.toContain("Estratégia de abordagem");
+  });
+
   it("o modelo não produziu texto: ia_falhou com o motivo, sem texto", async () => {
     mocks.generate.mockResolvedValue({ ok: false, reason: "sem_agente_publicado" });
     const r = await gerarPreviaDoCandidato(pool, ORG, linha());

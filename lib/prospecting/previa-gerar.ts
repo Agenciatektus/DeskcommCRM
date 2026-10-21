@@ -106,7 +106,8 @@ export async function gerarPreviaDoCandidato(
     ),
     origem: "Pesquisa de empresas",
     origemDaAbordagem: "prospeccao_fria",
-    dados: montarDadosDeAbordagem(linha.data, site),
+    // Modo "saída na 2ª": sem Auditoria/Detalhe, como no envio (worker.ts).
+    dados: montarDadosDeAbordagem(linha.data, cfg.data.exit_offer !== "first_message" ? null : site),
   });
   if (!gerado.ok) return { ok: false, motivo: "ia_falhou", detalhe: gerado.reason };
 
