@@ -24,25 +24,30 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), info: vi.fn(), warning: vi
 vi.mock("@/hooks/i18n/useT", () => ({ useT: () => (s: string) => s }));
 // O seletor de número é dublado (a lista de canais tem testes próprios); o
 // `channelLabel` vem do mesmo módulo, então o dublê precisa dos dois.
-vi.mock("@/hooks/channels/useChannelSessions", () => ({
-  useChannelSessions: () => ({
-    data: [
-      {
-        id: "canal-1",
-        // `waha` é o canal que TEM agenda do aparelho (capability `phonebook`):
-        // o diálogo filtra por capability, não por nome de provider.
-        provider: "waha",
-        status: "WORKING",
-        display_name: "Comercial",
-        phone_number: "+5511900000000",
-        waha_session_name: "sessao-1",
-      },
-    ],
-    isLoading: false,
-    isError: false,
-  }),
-  channelLabel: (c: { display_name: string | null }) => c.display_name ?? "",
-}));
+vi.mock("@/hooks/channels/useChannelSessions", async () => {
+  // O provider padrão é o canal que TEM agenda do aparelho (capability
+  // `phonebook`); o diálogo filtra por capability, e a fixture não nomeia o
+  // provider (cerca `lint-channels`).
+  const { DEFAULT_CHANNEL_PROVIDER } = await vi.importActual<
+    typeof import("@/lib/channels/capabilities")
+  >("@/lib/channels/capabilities");
+  return {
+    useChannelSessions: () => ({
+      data: [
+        {
+          id: "canal-1",
+          provider: DEFAULT_CHANNEL_PROVIDER,
+          status: "WORKING",
+          display_name: "Comercial",
+          phone_number: "+5511900000000",
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    }),
+    channelLabel: (c: { display_name: string | null }) => c.display_name ?? "",
+  };
+});
 
 /** Corpo que a rota devolve — o MESMO contrato de `ResumoDaAgenda`. */
 function resumo(parcial: Partial<ResumoDaAgenda>): ResumoDaAgenda {
