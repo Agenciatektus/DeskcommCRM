@@ -936,7 +936,7 @@ export function InboxLayout({
                 <input
                   type="search"
                   autoFocus
-                  className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-hidden placeholder:text-muted-foreground"
+                  className="min-w-0 flex-1 bg-transparent py-1 text-base outline-hidden placeholder:text-muted-foreground md:text-sm"
                   aria-label={t("Buscar nas mensagens carregadas")}
                   placeholder={t("Buscar nas mensagens carregadas")}
                   value={busca.termo}
