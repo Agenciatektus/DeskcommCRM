@@ -22,10 +22,14 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: async () => null }));
+// O portão de papel é o de verdade em miniatura: abaixo do mínimo pedido, 403.
+const ORDEM_DOS_PAPEIS = ["viewer", "agent", "manager", "admin"];
 vi.mock("@/lib/auth/require-role", () => ({
-  requireRole: async () => state.semSessao
+  requireRole: async (minimo: string) => state.semSessao
     ? { ok: false, response: NextResponse.json({ error: { code: "unauthenticated", message: "x" } }, { status: 401 }) }
-    : { ok: true, user: { id: "eu", idioma: "pt-BR" }, org: { orgId: "org-1", role: state.role } },
+    : ORDEM_DOS_PAPEIS.indexOf(state.role) < ORDEM_DOS_PAPEIS.indexOf(minimo)
+      ? { ok: false, response: NextResponse.json({ error: { code: "forbidden", message: "x" } }, { status: 403 }) }
+      : { ok: true, user: { id: "eu", idioma: "pt-BR" }, org: { orgId: "org-1", role: state.role } },
 }));
 vi.mock("@/lib/audit", () => ({ audit: state.audit }));
 vi.mock("@/lib/ai/dispatcher/rate-limit", () => ({ checkRateLimit: state.rate }));
@@ -102,6 +106,19 @@ describe("POST /api/v1/messages/{id}/retry", () => {
     expect(state.handler).not.toHaveBeenCalled();
     state.role = "manager";
     expect((await POST(req(), ctx())).status).toBe(200);
+  });
+
+  it("viewer não reenvia nem a própria mensagem: o portão é agent", async () => {
+    state.role = "viewer";
+    expect((await POST(req(), ctx())).status).toBe(403);
+    expect(state.handler).not.toHaveBeenCalled();
+    expect(updates()).toHaveLength(0);
+  });
+
+  it("mensagem que não é desta organização: 404, sem envio", async () => {
+    state.linha = null as unknown as Linha;
+    expect((await POST(req(), ctx())).status).toBe(404);
+    expect(state.handler).not.toHaveBeenCalled();
   });
 
   it("caso ambíguo sem confirmação: 409 confirmacao_necessaria, sem tocar na linha", async () => {

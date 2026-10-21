@@ -112,6 +112,8 @@ export function ChatThread({
   const deleteNote = useDeleteNote(conversationId ?? "");
   const { editar, apagar, ocultar, restaurar, reenviar } = useAlterarMensagem(conversationId);
   const canManage = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
+  // Reenviar é envio: a rota exige `agent`, e quem só lê não ganha um botão que ela recusa.
+  const podeEnviar = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.agent;
   const canalAlteraEnviada = transportaMensagem(provider)
     && capabilitiesOf(provider as ChannelProvider).alteraMensagemEnviada;
   const { enabled: debugCitations } = useDebugToggle(activeOrg?.role ?? null);
@@ -426,7 +428,7 @@ export function ChatThread({
                   onRestaurar={canManage && item.data.direction === "inbound"
                     ? () => restaurar.mutateAsync(item.data.id).then(() => undefined)
                     : undefined}
-                  onReenviar={item.data.direction === "outbound"
+                  onReenviar={podeEnviar && item.data.direction === "outbound"
                     ? (confirmado) => reenviar.mutateAsync({ id: item.data.id, confirmado }).then(() => undefined)
                     : undefined}
                   podeReenviarDeOutros={canManage}
