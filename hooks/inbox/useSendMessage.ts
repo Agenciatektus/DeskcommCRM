@@ -1,5 +1,6 @@
 "use client";
 import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { useRef } from "react";
 import { apiClient } from "@/lib/api/client";
 import { randomId } from "@/lib/random-id";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
@@ -31,12 +32,29 @@ interface MessagesPage {
   meta?: { cursor?: string | null; has_more?: boolean };
 }
 
+/** O mesmo envio (mesma conversa, mesmo conteúdo) tem a mesma identidade. */
+const identidadeDoEnvio = (input: SendArgs) => JSON.stringify(input);
+
 export function useSendMessage() {
   const qc = useQueryClient();
+  /**
+   * A chave de idempotência de cada envio que AINDA NÃO deu certo.
+   *
+   * Depois de um erro de rede o texto volta ao campo; se a pessoa toca Enviar
+   * de novo com o mesmo texto, a chave é a mesma e o servidor devolve o recibo
+   * do primeiro envio em vez de mandar duas vezes (o primeiro pode ter saído).
+   * Texto editado é outra mensagem e ganha outra chave. Só em memória: nada do
+   * atendimento fica guardado no aparelho.
+   */
+  const chaves = useRef(new Map<string, string>());
 
   return useMutation({
-    mutationFn: async (input: SendArgs) =>
-      apiClient.post<{ data: Message }>("/api/v1/messages", input),
+    mutationFn: async (input: SendArgs) => {
+      const identidade = identidadeDoEnvio(input);
+      const idempotencyKey = chaves.current.get(identidade) ?? randomId();
+      chaves.current.set(identidade, idempotencyKey);
+      return apiClient.post<{ data: Message }>("/api/v1/messages", input, { idempotencyKey });
+    },
     onMutate: async (args) => {
       if (args.media_storage_path || args.media_url || args.type === "contact") return {};
 
@@ -97,6 +115,7 @@ export function useSendMessage() {
       return { tempId };
     },
     onSuccess: (result, args, context) => {
+      chaves.current.delete(identidadeDoEnvio(args));
       const real = result.data;
       const queryKey = ["messages", args.conversation_id];
       qc.setQueryData<InfiniteData<MessagesPage>>(queryKey, (old) => {
