@@ -35,6 +35,14 @@ const FRASES: Record<string, string> = {
   zernio_error: "O canal recusou o envio. Confira a conexão em Conexões.",
   // Falha do NOSSO Storage ao preparar a mídia — não é do canal.
   storage_sign_failed: "Não conseguimos preparar o arquivo para envio.",
+  // O watchdog desistiu de uma linha parada em `sending`: o canal pode ter
+  // aceitado sem confirmar, então a frase não promete que não saiu.
+  send_timeout: "O WhatsApp não confirmou o envio a tempo. Pode ser que a mensagem tenha chegado.",
+  // Canal desativado pelo operador (o envio é recusado antes de sair).
+  channel_disabled: "Este número está desativado. Reative em Conexões para enviar.",
+  // Recusas assíncronas da plataforma oficial, gravadas pelo código numérico.
+  "131026": "Este número não tem WhatsApp.",
+  "131047": "A janela de 24 horas fechou. Envie um modelo aprovado ou aguarde o cliente escrever.",
 };
 
 /**

@@ -16,14 +16,21 @@
  * integração já têm quem tente de novo (o motor do agente tem o próprio
  * ledger), e um reenvio humano por cima sairia em dobro.
  */
-import type { Message } from "@/lib/types/messaging";
-
 export type TipoDeReenvio = "seguro" | "confirmar" | "nenhum";
 
-export type MensagemDoReenvio = Pick<
-  Message,
-  "direction" | "sent_via" | "sent_by_user_id" | "type" | "body" | "status" | "error_code" | "media_storage_path" | "metadata"
-> & { updated_at?: string | null };
+/** O recorte de `Message` que a regra lê — a linha do banco e a da tela cabem nele. */
+export interface MensagemDoReenvio {
+  direction: string;
+  sent_via: string;
+  sent_by_user_id: string | null;
+  type: string;
+  body: string | null;
+  status: string;
+  error_code: string | null;
+  media_storage_path: string | null;
+  metadata: unknown;
+  updated_at?: string | null;
+}
 
 /** Linha `queued` sem motivo há mais que isto: o processo pode ter morrido entre o envio e a marca. */
 export const QUEUED_PARADA_MS = 5 * 60 * 1000;
