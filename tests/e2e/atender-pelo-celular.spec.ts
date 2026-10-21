@@ -520,8 +520,24 @@ test.describe("atender pelo celular", () => {
     expect(livre, "algo flutua por cima do botão Enviar").toBe(true);
     await page.getByLabel("Mensagem", { exact: true }).fill("");
 
+    // A setinha "Opções da mensagem" (a porta do Responder) desenha 20px; a
+    // área de acerto no toque é de 44. A medida é `elementFromPoint` a 20px do
+    // centro nas quatro direções: a caixa do botão não enxerga o `::before`.
+    const opcoes = page.getByTestId("message-bubble").first().getByRole("button", { name: "Opções da mensagem" });
+    await opcoes.evaluate((b) => b.scrollIntoView({ block: "center" }));
+    const acerto = await opcoes.evaluate((b) => {
+      const r = b.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      return [[20, 0], [-20, 0], [0, 20], [0, -20]].map(([dx, dy]) => {
+        const alvo = document.elementFromPoint(cx + dx!, cy + dy!);
+        return { dx, dy, acerta: !!alvo && b.contains(alvo) };
+      });
+    });
+    expect(acerto.filter((p) => !p.acerta), "a setinha das opções tem menos de 44px de área de toque").toEqual([]);
+
     // O ✕ da citação: responder a uma mensagem pelo menu da bolha.
-    await page.getByTestId("message-bubble").first().getByRole("button", { name: "Opções da mensagem" }).tap();
+    await opcoes.tap();
     await page.getByRole("menuitem", { name: /Responder a esta mensagem/i }).tap();
     await medir("Cancelar resposta", true);
   });
