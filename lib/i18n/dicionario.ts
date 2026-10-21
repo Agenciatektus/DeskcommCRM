@@ -8981,14 +8981,9 @@ export const DICIONARIO: Traducoes = {
   "Data de nascimento": { es: "Fecha de nacimiento" },
   // Autocompletar de etiquetas na ficha do contato (issue #2732).
   "Nenhuma etiqueta neste contato.": { es: "Ninguna etiqueta en este contacto." },
-  "Remover etiqueta": { es: "Quitar etiqueta" },
   "Digite para buscar etiquetas…": { es: "Escribe para buscar etiquetas…" },
-  "Adicionar etiqueta": { es: "Agregar etiqueta" },
   "Sugestões de etiquetas": { es: "Sugerencias de etiquetas" },
   "Criar etiqueta": { es: "Crear etiqueta" },
-  "Só gerentes e administradores podem criar etiquetas novas.": {
-    es: "Solo gerentes y administradores pueden crear etiquetas nuevas.",
-  },
   "contato(s) importado(s)": { es: "contacto(s) importado(s)" },
   "linha(s) com problema": { es: "fila(s) con problema" },
   "Não foi possível importar o arquivo.": { es: "No se pudo importar el archivo." },
