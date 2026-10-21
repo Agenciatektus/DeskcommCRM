@@ -170,7 +170,10 @@ function DescricaoDasCondicoes({ dados, evento }: { dados: Extract<DadosDaCaixa,
   const op = t(campo?.lista && primeira.op === "contains" ? "tem a tag" : OP_LABELS[primeira.op as Op]);
   const valor =
     campo?.kind === "stage" ? (quadro?.data?.stages.find((s) => s.id === primeira.value)?.name ?? primeira.value) : primeira.value;
-  const frase = `${campo ? t(campo.label) : primeira.field} ${op} “${valor}”`;
+  // `esta vazio`/`esta preenchido` não pedem valor: a frase termina no operador,
+  // sem o trecho do valor — montá-lo dizia « Nome do lead está vazio “” » (#2727).
+  const alvo = `${campo ? t(campo.label) : primeira.field} ${op}`;
+  const frase = OPERADORES_SEM_VALOR.has(primeira.op) ? alvo : `${alvo} “${valor}”`;
   return <>{completas.length > 1 ? `${frase} (+${completas.length - 1})` : frase}</>;
 }
 

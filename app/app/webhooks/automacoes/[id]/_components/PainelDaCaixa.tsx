@@ -407,7 +407,10 @@ export function PainelDasCondicoes({
                   ))}
                 </SelectContent>
               </Select>
-              {curado?.kind === "stage" && !avancado ? (
+              {/* `esta vazio`/`esta preenchido` perguntam pelo CAMPO, não por um
+                  texto: sem valor a pedir, o campo de valor não é desenhado — a
+                  mesma decisão do formulário em `RuleEditor` (#2727). */}
+              {OPERADORES_SEM_VALOR.has(linha.op) ? null : curado?.kind === "stage" && !avancado ? (
                 <Select value={linha.value} onValueChange={(v) => mudar(i, { value: v })}>
                   <SelectTrigger className="flex-1" aria-label={t("Etapa")}>
                     <SelectValue placeholder={t("Etapa")} />
