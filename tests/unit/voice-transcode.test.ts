@@ -28,6 +28,7 @@ import { describe, expect, it, vi } from "vitest";
 import { extFromMime } from "@/lib/messaging/media/types";
 import { validateOutboundMedia } from "@/lib/messaging/media/upload-validation";
 import {
+  CONVERSOES_POR_ORGANIZACAO,
   CONVERSOES_SIMULTANEAS,
   ConversorOcupado,
   VOICE_MIME,
@@ -217,7 +218,7 @@ describe("paraReproducaoAac", () => {
       const { writeFile } = await import("node:fs/promises");
       await writeFile(args[args.length - 1]!, Buffer.from("mp4-aac"));
     });
-    const r = await paraReproducaoAac(Buffer.from("ogg"), { run });
+    const r = await paraReproducaoAac(Buffer.from("ogg"), "org-a", { run });
     const args = run.mock.calls[0]?.[0] ?? [];
     expect(args).toEqual(expect.arrayContaining(["-vn", "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", "-f", "mp4"]));
     expect(r.toString()).toBe("mp4-aac");
@@ -225,7 +226,7 @@ describe("paraReproducaoAac", () => {
 
   it("recusa entrada acima do teto sem chamar o ffmpeg", async () => {
     const run = vi.fn(async () => {});
-    await expect(paraReproducaoAac(Buffer.alloc(TETO_REPRODUCAO_BYTES + 1), { run })).rejects.toThrow();
+    await expect(paraReproducaoAac(Buffer.alloc(TETO_REPRODUCAO_BYTES + 1), "org-a", { run })).rejects.toThrow();
     expect(run).not.toHaveBeenCalled();
   });
 
@@ -233,7 +234,7 @@ describe("paraReproducaoAac", () => {
     const run = vi.fn(async () => {
       throw new Error("ffmpeg_exit_1");
     });
-    await expect(paraReproducaoAac(Buffer.from("ogg"), { run })).rejects.toThrow();
+    await expect(paraReproducaoAac(Buffer.from("ogg"), "org-a", { run })).rejects.toThrow();
   });
 
   it("acima de CONVERSOES_SIMULTANEAS no processo recusa com ConversorOcupado, e a vaga volta ao terminar", async () => {
@@ -248,23 +249,52 @@ describe("paraReproducaoAac", () => {
           });
         }),
     );
-    const emCurso = Array.from({ length: CONVERSOES_SIMULTANEAS }, () => paraReproducaoAac(Buffer.from("ogg"), { run }));
+    const emCurso = Array.from({ length: CONVERSOES_SIMULTANEAS }, (_, i) => paraReproducaoAac(Buffer.from("ogg"), `org-${i}`, { run }));
     await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(CONVERSOES_SIMULTANEAS));
 
-    await expect(paraReproducaoAac(Buffer.from("ogg"), { run })).rejects.toBeInstanceOf(ConversorOcupado);
+    await expect(paraReproducaoAac(Buffer.from("ogg"), "org-outra", { run })).rejects.toBeInstanceOf(ConversorOcupado);
     expect(run).toHaveBeenCalledTimes(CONVERSOES_SIMULTANEAS);
 
     for (const s of soltar) s();
     await Promise.all(emCurso);
     // A vaga volta mesmo quando o ffmpeg falha.
     await expect(
-      paraReproducaoAac(Buffer.from("ogg"), { run: async () => { throw new Error("ffmpeg_exit_1"); } }),
+      paraReproducaoAac(Buffer.from("ogg"), "org-0", { run: async () => { throw new Error("ffmpeg_exit_1"); } }),
     ).rejects.toThrow("ffmpeg_exit_1");
     const depois = vi.fn(async (args: string[], _cwd: string) => {
       const { writeFile } = await import("node:fs/promises");
       await writeFile(args[args.length - 1]!, Buffer.from("mp4"));
     });
-    await expect(paraReproducaoAac(Buffer.from("ogg"), { run: depois })).resolves.toBeInstanceOf(Buffer);
+    await expect(paraReproducaoAac(Buffer.from("ogg"), "org-0", { run: depois })).resolves.toBeInstanceOf(Buffer);
+  });
+
+  it("uma organização não ocupa sozinha as vagas: a segunda dela espera e a de outra entra", async () => {
+    expect(CONVERSOES_POR_ORGANIZACAO).toBeLessThan(CONVERSOES_SIMULTANEAS);
+    let soltar: () => void = () => {};
+    const presa = vi.fn(
+      (args: string[], _cwd: string) =>
+        new Promise<void>((resolve) => {
+          soltar = async () => {
+            const { writeFile } = await import("node:fs/promises");
+            await writeFile(args[args.length - 1]!, Buffer.from("mp4"));
+            resolve();
+          };
+        }),
+    );
+    const daA = paraReproducaoAac(Buffer.from("ogg"), "org-a", { run: presa });
+    await vi.waitFor(() => expect(presa).toHaveBeenCalledTimes(1));
+
+    const livre = vi.fn(async (args: string[], _cwd: string) => {
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(args[args.length - 1]!, Buffer.from("mp4"));
+    });
+    await expect(paraReproducaoAac(Buffer.from("ogg"), "org-a", { run: livre })).rejects.toBeInstanceOf(ConversorOcupado);
+    await expect(paraReproducaoAac(Buffer.from("ogg"), "org-b", { run: livre })).resolves.toBeInstanceOf(Buffer);
+
+    soltar();
+    await daA;
+    // A vaga da organização volta ao terminar.
+    await expect(paraReproducaoAac(Buffer.from("ogg"), "org-a", { run: livre })).resolves.toBeInstanceOf(Buffer);
   });
 
   it("saída vazia também rejeita", async () => {
@@ -272,6 +302,6 @@ describe("paraReproducaoAac", () => {
       const { writeFile } = await import("node:fs/promises");
       await writeFile(args[args.length - 1]!, Buffer.alloc(0));
     });
-    await expect(paraReproducaoAac(Buffer.from("ogg"), { run })).rejects.toThrow();
+    await expect(paraReproducaoAac(Buffer.from("ogg"), "org-a", { run })).rejects.toThrow();
   });
 });

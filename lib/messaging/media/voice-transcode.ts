@@ -75,6 +75,14 @@ export const TETO_REPRODUCAO_BYTES = 5 * 1024 * 1024;
 export const CONVERSOES_SIMULTANEAS = 2;
 let conversoesEmCurso = 0;
 
+/**
+ * E no máximo esta quantidade por ORGANIZAÇÃO, dentro do teto acima: numa
+ * instalação com várias empresas, uma só não ocupa as duas vagas e deixa as
+ * outras sem tocar áudio enquanto converte.
+ */
+export const CONVERSOES_POR_ORGANIZACAO = 1;
+const emCursoPorOrganizacao = new Map<string, number>();
+
 /** Conversor cheio: é espera, não defeito. A rota responde 503 com `Retry-After`. */
 export class ConversorOcupado extends Error {
   constructor() {
@@ -193,18 +201,24 @@ export async function transcodificarNotaDeVoz(
  * não toca seria responder 200 com um arquivo mudo. Quem chama responde 502.
  *
  * ponytail: converte a cada toque (CPU da VPS, com teto de 30/min por pessoa
- * na rota e `CONVERSOES_SIMULTANEAS` por processo — contador em memória, que
+ * na rota, `CONVERSOES_SIMULTANEAS` por processo e `CONVERSOES_POR_ORGANIZACAO`
+ * dentro dele — contadores em memória, que
  * vale por réplica do app). Se o custo pesar, guardar a cópia no Storage — mas
  * só com o expurgo e a anonimização cobrindo a cópia, provados por teste.
  */
 export async function paraReproducaoAac(
   buffer: Buffer,
+  organizationId: string,
   deps: { run?: typeof runFfmpeg } = {},
 ): Promise<Buffer> {
   if (buffer.length > TETO_REPRODUCAO_BYTES) throw new Error("audio_grande_demais");
-  if (conversoesEmCurso >= CONVERSOES_SIMULTANEAS) throw new ConversorOcupado();
+  const daOrganizacao = emCursoPorOrganizacao.get(organizationId) ?? 0;
+  if (conversoesEmCurso >= CONVERSOES_SIMULTANEAS || daOrganizacao >= CONVERSOES_POR_ORGANIZACAO) {
+    throw new ConversorOcupado();
+  }
   const executar = deps.run ?? runFfmpeg;
   conversoesEmCurso++;
+  emCursoPorOrganizacao.set(organizationId, daOrganizacao + 1);
   let dir: string | null = null;
   try {
     dir = await mkdtemp(join(tmpdir(), "tocar-"));
@@ -220,6 +234,9 @@ export async function paraReproducaoAac(
     return convertido;
   } finally {
     conversoesEmCurso--;
+    const restantes = (emCursoPorOrganizacao.get(organizationId) ?? 1) - 1;
+    if (restantes > 0) emCursoPorOrganizacao.set(organizationId, restantes);
+    else emCursoPorOrganizacao.delete(organizationId);
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }

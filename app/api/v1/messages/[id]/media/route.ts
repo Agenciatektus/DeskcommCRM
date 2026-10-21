@@ -275,7 +275,7 @@ async function converterParaTocar(
 
   let aac: Buffer;
   try {
-    aac = await paraReproducaoAac(bytes);
+    aac = await paraReproducaoAac(bytes, orgId);
   } catch (err) {
     if (err instanceof ConversorOcupado) {
       return fail("conversor_ocupado", t("Muitos áudios sendo preparados agora. Tente em alguns segundos."), 503, {

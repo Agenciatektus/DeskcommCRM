@@ -122,6 +122,8 @@ describe("?formato=aac", () => {
     expect(r.headers.get("x-request-id")).toBeTruthy();
     expect(Buffer.from(await r.arrayBuffer()).toString()).toBe("mp4-aac");
     expect(converter.mock.calls[0]?.[0].toString()).toBe("ogg-bytes");
+    // A vaga é contada pela organização da SESSÃO, nunca por algo do pedido.
+    expect(converter.mock.calls[0]?.[1]).toBe("org-1");
   });
 
   it("a leitura da mensagem filtra a organização ativa", async () => {
