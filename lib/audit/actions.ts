@@ -1120,6 +1120,14 @@ export const AUDIT_ACTIONS = [
   // dedicada `PATCH /contacts/[id]/carteira` (#2591) — a escrita é do servidor,
   // então o audit é a única trilha de quem mudou o dono.
   "contact.carteira_changed",
+
+  // #2593, item 1 do CR: um administrador ligou ou desligou a escrita
+  // automática do telefone de ficha vazia (`organizations.settings.crm
+  // .telefone_de_ficha_vazia`). Precisa de código próprio porque é a DECISÃO
+  // que passa a permitir escrita sem decisão humana: quem auditar a ficha de um
+  // cliente precisa encontrar o ato administrativo que abriu a porta, e não só
+  // as gravações que ela deixou passar.
+  "crm.telefone_de_ficha_vazia_alterado",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

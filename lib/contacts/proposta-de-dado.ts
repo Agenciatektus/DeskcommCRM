@@ -7,13 +7,27 @@
  * `agenda-reminder` pula com o motivo `sem_telefone`
  * (`app/api/v1/cron/agenda-reminder/route.ts:698`) e, numa operação sem
  * ninguém dedicado ao sistema, a fila de propostas nunca é aberta — medido na
- * issue: 4 reservas, 0 lembretes. Por isso o TELEFONE de ficha vazia é GRAVADO
- * NA HORA, em E.164, com trilha de auditoria.
+ * issue: 4 reservas, 0 lembretes. Por isso o TELEFONE de ficha vazia pode ser
+ * GRAVADO NA HORA, em E.164, com trilha de auditoria.
+ *
+ * ⚠️ E SÓ COM O INTERRUPTOR DA ORGANIZAÇÃO LIGADO (item 1 do CR da #2593).
+ * `organizations.settings.crm.telefone_de_ficha_vazia` nasce DESLIGADO em toda
+ * instalação, e quem lê é `lerTelefoneDeFichaVazia` (falha lê como desligado).
+ * Desligado, esta função faz EXATAMENTE o que fazia antes desta entrega: o
+ * número vira proposta. Sem isso, toda instalação que atualizasse passaria a
+ * gravar sem decisão humana e a regra da spec 17 §4b ("o dado ouvido é
+ * proposto, não gravado") mudaria por decurso de atualização — não por opção
+ * de quem opera.
  *
  * O que esta exceção NÃO abre: número existente nunca é substituído (a trava é
  * `phone_number is null` DENTRO do UPDATE — a mesma leitura que a rota de
  * decisão usa no `status pending`), nenhum outro campo grava sem decisão
  * humana, e valor que não vira E.164 continua só como proposta.
+ *
+ * A gravação deixa DUAS trilhas, e elas são diferentes de propósito:
+ * a auditoria `contact.field_auto_applied` (quem audita) e a atividade
+ * `contact_field_auto_applied` na timeline do contato (quem opera, e que só tem
+ * `crm_lead_activities` para ler) — `registrarTelefoneAplicadoNaTimeline`.
  *
  * A regra de negócio da fila, separada do wire da ferramenta pelo mesmo motivo
  * de `propoeReativacao`: quem decide se uma proposta pode nascer é esta função,
@@ -27,6 +41,10 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  lerTelefoneDeFichaVazia,
+  registrarTelefoneAplicadoNaTimeline,
+} from "@/lib/contacts/telefone-aplicado";
 import { normalizePhoneBR } from "@/lib/webhooks/inbound";
 
 /**
@@ -191,13 +209,19 @@ export async function proporDadoDoContato(
 
   // ── #2593: TELEFONE DE FICHA VAZIA VIRA ESCRITA, NÃO FILA ─────────────────
   //
-  // Só TELEFONE, só ficha SEM número, só valor que vira E.164. Quem JÁ tem
-  // número nem chega aqui (`atual` não é vazio) — trocar telefone continua
-  // exigindo decisão humana, e os outros campos (e-mail, nome, nascimento)
-  // continuam só como proposta.
+  // Só TELEFONE, só ficha SEM número, só valor que vira E.164 — E só com a
+  // opção da organização LIGADA. Quem JÁ tem número nem chega aqui (`atual` não
+  // é vazio) — trocar telefone continua exigindo decisão humana, e os outros
+  // campos (e-mail, nome, nascimento) continuam só como proposta.
+  //
+  // ⚠️ A ORDEM DAS DUAS CONDIÇÕES É O DESENHO: o interruptor é lido DEPOIS de
+  // as condições de dado se cumprirem (para não custar uma leitura de
+  // `organizations` em toda proposta de e-mail do produto) e ANTES do UPDATE.
+  // Desligado — que é o padrão de toda instalação —, o fluxo cai direto na
+  // proposta de sempre; nada mais neste arquivo muda de comportamento.
   if (campo === "phone_number" && !atual?.trim()) {
     const e164 = telefoneE164(dados.valor);
-    if (e164) {
+    if (e164 && (await lerTelefoneDeFichaVazia(db, organizationId))) {
       const gravado = await gravarTelefoneDeFichaVazia(db, {
         organizationId,
         contactId,
@@ -209,7 +233,20 @@ export async function proporDadoDoContato(
       // 23505), corrida perdida (0 linhas: alguém preencheu entre a leitura e
       // a escrita) e erro de banco — caem na proposta de sempre: a informação
       // não se perde e ninguém é sobrescrito.
-      if (gravado) return { criada: false, motivo: "aplicado_automaticamente", telefone: e164 };
+      if (gravado) {
+        // O RASTRO VISÍVEL (item 2 do CR): o número já está na ficha quando
+        // esta chamada acontece, e ela nunca lança — rastro não desfaz a
+        // escrita que descreve. Sem ela, o número entraria no cadastro sem
+        // nada na tela do contato explicando de onde veio.
+        await registrarTelefoneAplicadoNaTimeline(db, {
+          organizationId,
+          contactId,
+          telefone: e164,
+          agentId: dados.agentId ?? null,
+          trecho: dados.trecho ?? null,
+        });
+        return { criada: false, motivo: "aplicado_automaticamente", telefone: e164 };
+      }
     }
   }
 

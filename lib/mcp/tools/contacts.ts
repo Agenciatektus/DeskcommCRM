@@ -197,14 +197,23 @@ const propostaShape = {
 };
 
 /**
- * ⚠️ Esta ferramenta NÃO grava o dado — com UMA exceção (#2593): o TELEFONE
- * de um contato SEM número é gravado na hora, em E.164, com auditoria. Nos
- * demais casos ela cria uma proposta que uma pessoa confirma, e o `description`
- * diz as DUAS coisas ao modelo em primeiro lugar, de propósito: um modelo que
- * acredite ter gravado responderia "pronto, já atualizei seu cadastro" ao
- * cliente, prometendo o que não aconteceu — e um que ache que nunca grava nada
+ * ⚠️ Esta ferramenta NÃO grava o dado — com UMA exceção condicionada (#2593): o
+ * TELEFONE de um contato SEM número é gravado na hora, em E.164, com auditoria e
+ * rastro na linha do tempo, MAS SÓ quando a organização liga a opção
+ * `settings.crm.telefone_de_ficha_vazia` (desligada por padrão). Nos demais
+ * casos ela cria uma proposta que uma pessoa confirma, e o `description` diz as
+ * DUAS coisas ao modelo em primeiro lugar, de propósito: um modelo que acredite
+ * ter gravado responderia "pronto, já atualizei seu cadastro" ao cliente,
+ * prometendo o que não aconteceu — e um que ache que nunca grava nada
  * responderia "vou anotar para alguém confirmar" num caso em que o número já
  * entrou na ficha.
+ *
+ * ⚠️ O TEXTO NÃO PROMETE A GRAVAÇÃO: como a opção é POR ORGANIZAÇÃO e desligada
+ * por padrão, quem lê a ferramenta não pode decidir antes de chamá-la se o
+ * desfecho foi escrita ou fila — quem responde isso é o RETORNO
+ * (`motivo: "aplicado_automaticamente"`). Por isso o corpo diz "pode ser
+ * gravado" e o `mensagem` do desfecho aplicado é quem autoriza o modelo a dizer
+ * ao cliente que ficou anotado.
  *
  * Ela é de CATÁLOGO, e não nativa do Operador, porque o Operador não monta
  * ToolSet nativo nenhum (zero ocorrências de `tool(` em operator-turn.ts) e só
@@ -217,11 +226,12 @@ export const crmProposeContactField: McpToolDefinition<typeof propostaShape> = {
   description:
     "Registra uma informação que o cliente forneceu (email, nome, telefone ou data de nascimento) como PROPOSTA para " +
     "uma pessoa confirmar; a proposta vence sozinha se ninguém decidir. EXCEÇÃO: um TELEFONE informado para um " +
-    "contato que está SEM número no cadastro é gravado NA HORA, em formato internacional E.164 — aí sim pode " +
-    "dizer ao cliente que o número ficou anotado. Nunca é gravado: telefone de quem JÁ tem número no cadastro " +
-    "(trocar exige decisão humana), email, nome e data de nascimento — para esses nunca diga que o cadastro foi " +
-    "atualizado. Recusa se já houver proposta do mesmo campo aguardando decisão, se o valor for igual ao que já " +
-    "está gravado, ou se o contato foi anonimizado.",
+    "contato que está SEM número pode ser gravado NA HORA, em formato internacional E.164 — mas só quando a " +
+    "organização liga essa opção (vem desligada), e quem diz se a gravação aconteceu é o RETORNO desta chamada " +
+    "(motivo \"aplicado_automaticamente\"); sem esse motivo, diga que alguém vai conferir. Nunca é gravado: telefone de " +
+    "quem JÁ tem número no cadastro (trocar exige decisão humana), email, nome e data de nascimento — para esses nunca " +
+    "diga que o cadastro foi atualizado. Recusa se já houver proposta do mesmo campo aguardando decisão, se o valor for " +
+    "igual ao que já está gravado, ou se o contato foi anonimizado.",
   inputSchema: propostaShape,
   category: "write",
   requiresRole: "agent",
@@ -233,6 +243,13 @@ export const crmProposeContactField: McpToolDefinition<typeof propostaShape> = {
       campo: input.campo,
       valor: input.valor,
       trecho: input.trecho ?? null,
+      // ⚠️ `agent_id`, NUNCA `actor.id`: a coluna `crm_lead_activities.actor_agent_id`
+      // tem FK para `ai_agents`, e `actor.id` carrega o id do RUN (ou o do
+      // token, ou a string `agent-engine` dependendo do runtime). Sem
+      // `agent_id` a linha entra como sistema — perde-se a AUTORIA do rastro,
+      // que é ruim, em vez da linha inteira, que é pior. Ver `Actor` em
+      // `lib/api/handlers/types.ts`.
+      agentId: ctx.actor.type === "ai_agent" ? (ctx.actor.agent_id ?? null) : null,
     });
 
     // Mesmo payload de ator das outras tools de escrita. Inline porque

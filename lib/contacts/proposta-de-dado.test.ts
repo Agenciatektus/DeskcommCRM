@@ -157,6 +157,9 @@ function dbFalso(contato: Linha | null) {
 
 const ORG = "9a0b7e00-0000-4000-8000-000000000001";
 const CONTATO = "b1a0b7e0-0000-4000-8000-000000000002";
+/** O negócio ABERTO da pessoa — onde a atividade do telefone é pendurada. */
+const LEAD = "c2b0b7e0-0000-4000-8000-000000000003";
+const PIPELINE = "d3b0b7e0-0000-4000-8000-000000000004";
 
 describe("propor nascimento", () => {
   it("cria a linha na fila sem tocar no cadastro", async () => {
@@ -233,18 +236,29 @@ describe("propor nascimento", () => {
 // --------------------------------------------------------------------------
 
 /**
- * O dublê dos três casos da issue: ficha VAZIA (grava), valor INVÁLIDO (não
- * grava) e ficha JÁ PREENCHIDA (não sobrescreve). Ele precisa enxergar as
- * DUAS escritas possíveis — o UPDATE condicional do telefone e o INSERT da
- * proposta — porque a prova desses casos é justamente qual das duas aconteceu
- * (e, no terceiro, que a primeira NÃO aconteceu).
+ * O dublê dos casos da issue: ficha VAZIA (grava), valor INVÁLIDO (não grava) e
+ * ficha JÁ PREENCHIDA (não sobrescreve). Ele precisa enxergar as TRÊS escritas
+ * possíveis — o UPDATE condicional do telefone, o INSERT da proposta e a
+ * ATIVIDADE na linha do tempo — porque a prova desses casos é justamente qual
+ * delas aconteceu (e, na ficha preenchida, que a primeira NÃO aconteceu).
+ *
+ * `opcao.settings` é o `organizations.settings` da organização: `undefined` é a
+ * instalação que nunca abriu a tela — o caso do PADRÃO DESLIGADO, que é o que
+ * mais importa aqui (#2593, item 1 do CR). `opcao.leads` é o negócio em que a
+ * atividade é pendurada; sem ele não há linha possível (`lead_id` é NOT NULL).
  */
 function dbDeTelefone(
   contato: Linha,
-  opcao: { linhasAtualizadas?: number; erroNoUpdate?: { code?: string; message: string } } = {},
+  opcao: {
+    linhasAtualizadas?: number;
+    erroNoUpdate?: { code?: string; message: string };
+    settings?: unknown;
+    leads?: Linha[];
+  } = {},
 ) {
   const inseridas: Linha[] = [];
   const atualizacoes: Array<{ patch: Linha; filtros: Record<string, unknown> }> = [];
+  const atividades: Linha[] = [];
 
   const db = {
     from(tabela: string) {
@@ -280,6 +294,64 @@ function dbDeTelefone(
           },
         };
       }
+      // O INTERRUPTOR (#2593): `lerTelefoneDeFichaVazia` lê a organização.
+      if (tabela === "organizations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: { settings: opcao.settings ?? null }, error: null }),
+            }),
+          }),
+        };
+      }
+      // O ROTEAMENTO contato→negócio do rastro: um negócio ABERTO da pessoa e
+      // o funil padrão da organização.
+      if (tabela === "crm_leads") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: async () => ({
+                data:
+                  opcao.leads ??
+                  [
+                    {
+                      id: LEAD,
+                      organization_id: ORG,
+                      pipeline_id: PIPELINE,
+                      status: "open",
+                      last_activity_at: null,
+                      created_at: "2026-10-01T00:00:00.000Z",
+                    },
+                  ],
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (tabela === "crm_pipelines") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                eq: () => ({
+                  limit: () => ({
+                    maybeSingle: async () => ({ data: { id: PIPELINE }, error: null }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (tabela === "crm_lead_activities") {
+        return {
+          insert: (linha: Linha) => {
+            atividades.push(linha);
+            return { error: null };
+          },
+        };
+      }
       return {
         insert: (linha: Linha) => {
           inseridas.push(linha);
@@ -290,7 +362,7 @@ function dbDeTelefone(
       };
     },
   };
-  return { db: db as unknown as SupabaseClient, inseridas, atualizacoes };
+  return { db: db as unknown as SupabaseClient, inseridas, atualizacoes, atividades };
 }
 
 const FICHA_VAZIA: Linha = {
@@ -306,9 +378,20 @@ const FICHA_VAZIA: Linha = {
   consent: { marketing: { granted: true, granted_at: "2026-01-01T00:00:00.000Z" } },
 };
 
+/**
+ * O `organizations.settings` de quem LIGOU a opção (#2593, item 1 do CR). É a
+ * forma exata que a action grava — `crm` mesclado, sem apagar `cliente_pela_agenda`.
+ */
+const OPCAO_LIGADA = { crm: { cliente_pela_agenda: false, telefone_de_ficha_vazia: true } };
+/** O jsonb de quem DESLIGOU depois de ter ligado. */
+const OPCAO_DESLIGADA = { crm: { telefone_de_ficha_vazia: false } };
+
 describe("#2593: o telefone informado pelo cliente", () => {
-  it("caso 1 — ficha SEM telefone: grava sozinho em E.164, sem nascer proposta", async () => {
-    const { db, inseridas, atualizacoes } = dbDeTelefone({ ...FICHA_VAZIA });
+  it("caso 1 — ficha SEM telefone com a opção LIGADA: grava sozinho em E.164, sem nascer proposta", async () => {
+    const { db, inseridas, atualizacoes, atividades } = dbDeTelefone(
+      { ...FICHA_VAZIA },
+      { settings: OPCAO_LIGADA },
+    );
 
     const r = await proporDadoDoContato(db, {
       organizationId: ORG,
@@ -339,9 +422,113 @@ describe("#2593: o telefone informado pelo cliente", () => {
     });
   });
 
+  it("caso 1b — opção DESLIGADA (instalação nova, sem a chave): o telefone vira PROPOSTA, como hoje", async () => {
+    // Este é o caso que o item 1 do CR existe para garantir: `settings` sem a
+    // chave é TODA instalação que já existe — e ela não pode começar a gravar
+    // sozinha porque o produto foi atualizado.
+    const { db, inseridas, atualizacoes, atividades } = dbDeTelefone({ ...FICHA_VAZIA }, { settings: {} });
+
+    const r = await proporDadoDoContato(db, {
+      organizationId: ORG,
+      contactId: CONTATO,
+      campo: "phone_number",
+      valor: "(11) 99999-8888",
+      trecho: "meu número é (11) 99999-8888",
+    });
+
+    expect(r.criada, JSON.stringify(r)).toBe(true);
+    expect(atualizacoes, "desligada, o cadastro NÃO pode ser tocado").toHaveLength(0);
+    expect(inseridas, "o dado ouvido segue PROPOSTO — é a regra da spec 17 §4b").toHaveLength(1);
+    expect(inseridas[0]).toMatchObject({
+      campo: "phone_number",
+      valor_proposto: "+11999998888",
+      organization_id: ORG,
+      contact_id: CONTATO,
+    });
+    expect(atividades, "proposta não gera rastro de gravação automática").toHaveLength(0);
+  });
+
+  it("caso 1c — opção DESLIGADA de forma explícita: continua propondo", async () => {
+    // A régua é "só o booleano `true` liga": `false` explícito é o caso de quem
+    // LIGOU um dia e desligou depois — e o comportamento tem de voltar a ser o
+    // de sempre.
+    const { db, inseridas, atualizacoes } = dbDeTelefone(
+      { ...FICHA_VAZIA },
+      { settings: OPCAO_DESLIGADA },
+    );
+
+    const r = await proporDadoDoContato(db, {
+      organizationId: ORG,
+      contactId: CONTATO,
+      campo: "phone_number",
+      valor: "(11) 99999-8888",
+    });
+
+    expect(r.criada, JSON.stringify(r)).toBe(true);
+    expect(atualizacoes).toHaveLength(0);
+    expect(inseridas).toHaveLength(1);
+  });
+
+  it("o RASTRO na linha do tempo: com a opção ligada, a atividade do número aplicado nasce", async () => {
+    // O item 2 do CR: a timeline do contato lê SÓ `crm_lead_activities`
+    // (`app/api/v1/contacts/[id]/timeline/route.ts`), e a auditoria não aparece
+    // para quem opera. Sem esta linha, o número entra na ficha sem nada na tela
+    // dizendo de onde veio.
+    const { db, atividades } = dbDeTelefone({ ...FICHA_VAZIA }, { settings: OPCAO_LIGADA });
+
+    const r = await proporDadoDoContato(db, {
+      organizationId: ORG,
+      contactId: CONTATO,
+      campo: "phone_number",
+      valor: "(11) 99999-8888",
+      trecho: "meu número é (11) 99999-8888",
+    });
+
+    // `toEqual` no objeto INTEIRO: o desfecho é ESCRITA, e o número
+    // devolvido é o E.164 — quem chama a ferramenta responde ao cliente
+    // com ESTE valor, não com o texto cru que ele digitou.
+    expect(r).toEqual({
+      criada: false,
+      motivo: "aplicado_automaticamente",
+      telefone: "+5511999998888",
+    });
+    expect(atividades, "a gravação automática precisa deixar rastro na timeline").toHaveLength(1);
+    const a = atividades[0]!;
+    // O tipo é o rótulo que a tela renderiza (`ACTIVITY_LABELS`), e o contato é
+    // o do turno — é por `contact_id` que a timeline do contato encontra a linha.
+    expect(a.type).toBe("contact_field_auto_applied");
+    expect(a.contact_id).toBe(CONTATO);
+    expect(a.lead_id).toBe(LEAD);
+    expect(a.organization_id).toBe(ORG);
+    // O NÚMERO legível para quem opera: é o que a issue pede que apareça.
+    expect(String(a.reason)).toContain("+5511999998888");
+    expect(a.payload).toMatchObject({ campo: "phone_number", telefone: "+5511999998888" });
+  });
+
+  it("sem negócio aberto não há linha possível — e a ausência não derruba a gravação", async () => {
+    // `crm_lead_activities.lead_id` é NOT NULL: contato sem negócio tem só
+    // auditoria, limitação declarada do barramento. O que NÃO pode acontecer é a
+    // falta do rastro desfazer a escrita que ele descreve.
+    const { db, atualizacoes, atividades } = dbDeTelefone(
+      { ...FICHA_VAZIA },
+      { settings: OPCAO_LIGADA, leads: [] },
+    );
+
+    const r = await proporDadoDoContato(db, {
+      organizationId: ORG,
+      contactId: CONTATO,
+      campo: "phone_number",
+      valor: "(11) 99999-8888",
+    });
+
+    expect(r).toEqual({ criada: false, motivo: "aplicado_automaticamente", telefone: "+5511999998888" });
+    expect(atualizacoes, "a ficha foi gravada mesmo sem negócio para pendurar o rastro").toHaveLength(1);
+    expect(atividades).toHaveLength(0);
+  });
+
   it("caso 2 — valor que não vira E.164: nada é gravado no cadastro", async () => {
     // Curto demais: recusado pela régua da própria proposta, nem chega à escrita.
-    const curto = dbDeTelefone({ ...FICHA_VAZIA });
+    const curto = dbDeTelefone({ ...FICHA_VAZIA }, { settings: OPCAO_LIGADA });
     const r1 = await proporDadoDoContato(curto.db, {
       organizationId: ORG,
       contactId: CONTATO,
@@ -355,7 +542,7 @@ describe("#2593: o telefone informado pelo cliente", () => {
     // 8 dígitos passam na régua LARGA da proposta (`valorAceitavel`), mas sem
     // DDI não viram E.164 — a regra da casa só dá `+55` para 10/11 dígitos.
     // Este é o caso em que a validação de E.164 é quem segura a escrita.
-    const semDdi = dbDeTelefone({ ...FICHA_VAZIA });
+    const semDdi = dbDeTelefone({ ...FICHA_VAZIA }, { settings: OPCAO_LIGADA });
     const r2 = await proporDadoDoContato(semDdi.db, {
       organizationId: ORG,
       contactId: CONTATO,
@@ -368,10 +555,13 @@ describe("#2593: o telefone informado pelo cliente", () => {
   });
 
   it("caso 3 — ficha JÁ COM telefone: o número existente não é sobrescrito", async () => {
-    const { db, inseridas, atualizacoes } = dbDeTelefone({
-      ...FICHA_VAZIA,
-      phone_number: "+551133334444",
-    });
+    const { db, inseridas, atualizacoes } = dbDeTelefone(
+      {
+        ...FICHA_VAZIA,
+        phone_number: "+551133334444",
+      },
+      { settings: OPCAO_LIGADA },
+    );
 
     const r = await proporDadoDoContato(db, {
       organizationId: ORG,
@@ -397,7 +587,7 @@ describe("#2593: o telefone informado pelo cliente", () => {
   it("o UPDATE que não casa linha vira PROPOSTA — a informação não se perde e nada é sobrescrito", async () => {
     // Corrida: alguém preencheu o número entre a leitura e a escrita (0 linhas
     // casadas). A trava do `is("phone_number", null)` fez o banco recusar…
-    const corrida = dbDeTelefone({ ...FICHA_VAZIA }, { linhasAtualizadas: 0 });
+    const corrida = dbDeTelefone({ ...FICHA_VAZIA }, { settings: OPCAO_LIGADA, linhasAtualizadas: 0 });
     const r1 = await proporDadoDoContato(corrida.db, {
       organizationId: ORG,
       contactId: CONTATO,
@@ -413,7 +603,10 @@ describe("#2593: o telefone informado pelo cliente", () => {
     // uma escrita automática em cima de dois cadastros.
     const duplicado = dbDeTelefone(
       { ...FICHA_VAZIA },
-      { erroNoUpdate: { code: "23505", message: "duplicate key value violates unique constraint" } },
+      {
+        settings: OPCAO_LIGADA,
+        erroNoUpdate: { code: "23505", message: "duplicate key value violates unique constraint" },
+      },
     );
     const r2 = await proporDadoDoContato(duplicado.db, {
       organizationId: ORG,
