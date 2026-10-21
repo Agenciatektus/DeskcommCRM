@@ -21,7 +21,7 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### Adicionado
 
-- **Agenda por serviço com turmas, capacidade e calendários compartilhados** Tipos de atendimento podem ter programação própria: individual por profissional, reserva coletiva com capacidade ou sem limite. O painel configura horários, exceções, profissionais, recursos, bloqueios e destino Google. Reservas existentes são preservadas, e tipos que não adotam a programação seguem como antes.
+- **Agenda por serviço com turmas, capacidade e calendários compartilhados** Tipos de atendimento podem ter programação própria: individual por profissional, reserva coletiva com capacidade ou sem limite. O painel configura horários, exceções, profissionais, recursos, bloqueios e destino Google. Reservas existentes são preservadas, e tipos que não adotam a programação seguem como antes. Crédito: @vitorlacerdadigital (#3132).
 
 - **O sistema pode ser instalado no celular como app, com uma tela que guia a instalação por sistema e avisa quando o endereço não permite** Em Configurações › Sua conta › App no celular, cada pessoa vê o passo a passo para o seu aparelho (iPhone ou Android). Sem https, a tela avisa que aquela instalação não tem app no celular. O app usa o nome e o ícone da instalação. Nada a fazer na atualização.
 
@@ -29,7 +29,7 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
   Desenho e código de @paulolimajr77 (Spec 23, a tela, #2639).
 
-- **O agente consulta os produtos de uma loja WooCommerce pelo banco externo** Uma conexão MySQL com uma loja WooCommerce ganha a receita pronta "Produtos da loja WooCommerce": o agente responde no WhatsApp com nome, preço, estoque e link, sem ninguém escrever SQL. Fica desligada até alguém adicioná-la à conexão.
+- **O agente consulta os produtos de uma loja WooCommerce pelo banco externo** Uma conexão MySQL com uma loja WooCommerce ganha a receita pronta "Produtos da loja WooCommerce": o agente responde no WhatsApp com nome, preço, estoque e link, sem ninguém escrever SQL. Fica desligada até alguém adicioná-la à conexão. Crédito: @paulolimajr77 (#3096).
 
 - **As etiquetas em "Editar contato" passam a sugerir as que já existem na empresa** Ao digitar, o campo sugere as etiquetas já usadas, e escolher uma grava a grafia existente em vez de criar outra parecida. Nada a fazer na atualização. Crédito: @webtecnica.
 
@@ -62,17 +62,17 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 - **O telefone que o cliente informa pode entrar sozinho na ficha sem número** Nova opção em Configurações › Distribuição de atendimento, que vem desligada e só um administrador liga: o telefone dito na conversa é gravado na ficha que está sem número. Ela nunca troca o número de quem já tem um. Na atualização não há nada a fazer. Crédito: @webtecnica (código) e @kristhianlumai-lgtm (#2593).
 
-- **O passo de modelo do fluxo preenche as variáveis do modelo aprovado** O passo "modelo de mensagem" aceita modelo aprovado com variáveis (`{{1}}`, `{{2}}`…), cada uma vinda do contato ou de um campo do negócio. Se faltar o dado, o passo é pulado e o motivo aparece na linha do tempo — nunca sai parâmetro em branco.
+- **O passo de modelo do fluxo preenche as variáveis do modelo aprovado** O passo "modelo de mensagem" aceita modelo aprovado com variáveis (`{{1}}`, `{{2}}`…), cada uma vinda do contato ou de um campo do negócio. Se faltar o dado, o passo é pulado e o motivo aparece na linha do tempo — nunca sai parâmetro em branco. Crédito: @jmpo (#3121).
 
 ### Alterado
 
-- **Configuração de agenda organizada por serviço** A configuração da agenda separa Serviço, Horários, Google e Bloqueios em quatro abas. As reservas existentes e os agentes permanecem iguais.
+- **Configuração de agenda organizada por serviço** A configuração da agenda separa Serviço, Horários, Google e Bloqueios em quatro abas. As reservas existentes e os agentes permanecem iguais. Crédito: @vitorlacerdadigital (#3132).
 
 - **O pedido de exclusão avisa o titular por e-mail depois de apagar, e o rótulo de anonimizado não deriva mais do id** Em organizações fora do Brasil, o pedido de exclusão avisa o titular por e-mail depois de apagar (RGPD). No Brasil não há esse aviso. O rótulo `Cliente Anonimizado #…` passa a usar um sufixo aleatório, com a mesma aparência.
 
   Quem opera a instalação não precisa fazer nada: sem configuração nova e sem mudança de número de versão esperada além da atualização de sempre.
 
-  Refs #2342.
+  Contribuição de @webtecnica (#2819), refs #2342.
 
 - **As telas do CRM abrem mais depressa, com menos esperas pelo banco a cada clique** Leituras ao banco que esperavam umas pelas outras agora saem juntas; a diferença aparece mais com o banco fora da VPS. Nada muda no que a tela mostra. Crédito: @SrPascoa
 
@@ -82,9 +82,9 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### Corrigido
 
-- **Identifique os responsáveis da agenda pelo nome ou e-mail** Os seletores da agenda mostram o nome do responsável ou, sem nome, o e-mail. Não é preciso editar perfis.
+- **Identifique os responsáveis da agenda pelo nome ou e-mail** Os seletores da agenda mostram o nome do responsável ou, sem nome, o e-mail. Não é preciso editar perfis. Crédito: @vitorlacerdadigital (#3132).
 
-- **Criar modelo com botões no número oficial intermediado funciona** Criar ou editar um modelo com botões no número oficial intermediado era recusado ("Invalid discriminator value"). Agora funciona.
+- **Criar modelo com botões no número oficial intermediado funciona** Criar ou editar um modelo com botões no número oficial intermediado era recusado ("Invalid discriminator value"). Agora funciona. Crédito: @jmpo (#3121).
 
 - **Duas campanhas no mesmo número passam a dividir o dia** A campanha parada pelo próprio limite ou intervalo libera o número, e a outra envia no ritmo dela. Nada a fazer na atualização.
 
@@ -94,7 +94,7 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 - **O custo de IA bate com a fatura do provedor** O gasto de IA em Uso e orçamento cobrava o cache pelo preço mais caro e mostrava mais do que a fatura. Agora bate. Os meses anteriores ficam como estavam. Crédito: @jmpo.
 
-- **O editor de sequência e as automações deixam de mostrar vários textos em português quando o idioma é espanhol, e o cartão do e-mail deixa de dizer « send_email »** Os textos seguem o idioma de quem usa, e o cartão de e-mail mostra o assunto. Em português nada muda na tela.
+- **O editor de sequência e as automações deixam de mostrar vários textos em português quando o idioma é espanhol, e o cartão do e-mail deixa de dizer « send_email »** Os textos seguem o idioma de quem usa, e o cartão de e-mail mostra o assunto. Em português nada muda na tela. Crédito: @FabioMundoDigital (#3120).
 
 - **Sequências em espanhol: «Atualizado em», a aba «Fila» e a política de handoff** Os três passam a aparecer em espanhol, sem mudar o valor gravado.
 
