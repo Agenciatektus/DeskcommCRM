@@ -140,8 +140,10 @@ describe("conditionSchema", () => {
 });
 
 /**
- * #2727 — as condições de uma regra: a lista simples (formato antigo) e os
- * grupos `{all}` / `{any}` aninháveis, que é o que a tela e o motor aceitam.
+ * #2727 — as condições de uma regra: a lista simples (formato antigo) e o grupo
+ * do TOPO (`{all}` / `{any}`). Aninhar grupo em grupo NÃO entra: nenhuma tela o
+ * edita e o formulário o perderia silenciosamente (o CR do #2727 escolheu
+ * fechar na porta da API em vez de deixar a regra encolher ao ser salva).
  */
 describe("conditionsSchema (#2727)", () => {
   const linha = { field: "status", op: "eq", value: "won" };
@@ -156,11 +158,11 @@ describe("conditionsSchema (#2727)", () => {
     expect(conditionsSchema.safeParse({ any: [linha] }).success).toBe(true);
   });
 
-  it("aceita aninhamento de all dentro de any e vice-versa", () => {
-    const aninhado = {
-      all: [linha, { any: [linha, { all: [{ field: "a", op: "is_empty", value: "" }] }] }],
-    };
-    expect(conditionsSchema.safeParse(aninhado).success).toBe(true);
+  it("RECUSA grupo dentro de grupo — só o grupo do TOPO", () => {
+    expect(conditionsSchema.safeParse({ all: [linha, { any: [linha] }] }).success).toBe(false);
+    expect(conditionsSchema.safeParse({ any: [{ all: [linha] }] }).success).toBe(false);
+    // O mesmo conteúdo, sem aninhar, passa: o que se recusa é o grupo interior.
+    expect(conditionsSchema.safeParse({ any: [linha, linha] }).success).toBe(true);
   });
 
   it("recusa {all:…} e {any:…} no MESMO grupo (o combinador é um só)", () => {
@@ -170,6 +172,15 @@ describe("conditionsSchema (#2727)", () => {
   it("recusa operador desconhecido DENTRO de um grupo", () => {
     const r = conditionsSchema.safeParse({ any: [{ field: "a", op: "regex", value: "x" }] });
     expect(r.success).toBe(false);
+  });
+
+  it("o teto é 10 no TOPO, nos dois formatos (não 50 por nível)", () => {
+    const n = (quantos: number) => Array.from({ length: quantos }, () => linha);
+    expect(conditionsSchema.safeParse(n(10)).success).toBe(true);
+    expect(conditionsSchema.safeParse(n(11)).success).toBe(false);
+    expect(conditionsSchema.safeParse({ any: n(10) }).success).toBe(true);
+    expect(conditionsSchema.safeParse({ any: n(11) }).success).toBe(false);
+    expect(conditionsSchema.safeParse({ all: n(11) }).success).toBe(false);
   });
 });
 

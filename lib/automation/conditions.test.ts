@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateConditions, resolveField } from "@/lib/automation/conditions";
+import { contarCondicoes, evaluateConditions, OPERADORES_SEM_VALOR, resolveField } from "@/lib/automation/conditions";
 
 const ctx = {
   event: { to_stage_id: "s2", added_tags: ["vip", "novo"] },
@@ -248,5 +248,43 @@ describe("grupos all/any e compatibilidade (#2727)", () => {
   it("grupo vazio: all → true (vacuidade), any → false", () => {
     expect(evaluateConditions({ all: [] }, ctx)).toBe(true);
     expect(evaluateConditions({ any: [] }, ctx)).toBe(false);
+  });
+});
+
+/**
+ * #2727 — a CONTAGEM que a tela de operação mostra. Contar `conditions.length`
+ * devolvia 0 para `{any:[…]}` (um objeto não tem comprimento) e a tela dizia
+ * "sem condições" para uma regra com duas — `lib/operacao/regras-automaticas.ts`.
+ */
+describe("contarCondicoes (#2727)", () => {
+  const linha = { field: "a", op: "eq" as const, value: "1" };
+
+  it("conta a lista simples como sempre contou", () => {
+    expect(contarCondicoes([])).toBe(0);
+    expect(contarCondicoes([linha])).toBe(1);
+    expect(contarCondicoes([linha, linha, linha])).toBe(3);
+  });
+
+  it("conta as folhas do grupo do topo — o caso que dava 0", () => {
+    expect(contarCondicoes({ any: [linha, linha] })).toBe(2);
+    expect(contarCondicoes({ all: [linha] })).toBe(1);
+    expect(contarCondicoes({ any: [] })).toBe(0);
+  });
+
+  it("conta através de grupo dentro de grupo", () => {
+    expect(contarCondicoes({ all: [linha, { any: [linha, { all: [linha] }] }] })).toBe(3);
+  });
+
+  it("o que não é lista nem grupo conta 0, sem estourar", () => {
+    expect(contarCondicoes(null as unknown as Parameters<typeof contarCondicoes>[0])).toBe(0);
+    expect(contarCondicoes("lixo" as unknown as Parameters<typeof contarCondicoes>[0])).toBe(0);
+  });
+});
+
+describe("OPERADORES_SEM_VALOR (#2727)", () => {
+  it("é exatamente is_empty/is_not_empty — os que não pedem valor", () => {
+    expect([...OPERADORES_SEM_VALOR].sort()).toEqual(["is_empty", "is_not_empty"]);
+    expect(OPERADORES_SEM_VALOR.has("eq")).toBe(false);
+    expect(OPERADORES_SEM_VALOR.has("is_empty")).toBe(true);
   });
 });

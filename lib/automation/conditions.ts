@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * Condições do motor de regras: filtros de campo combinados por grupos `all`
- * (todas) / `any` (qualquer uma), aninháveis.
+ * (todas) / `any` (qualquer uma).
  *
  * ─── Compatibilidade (leia antes de mudar o avaliador) ─────────────────────
  *
@@ -10,7 +10,9 @@ import { z } from "zod";
  * array simples de `{ field, op, value }`, combinado por E. Ele CONTINUA
  * válido: o array é lido como `all` — a mesma semântica de antes desta
  * mudança, regra por regra. Só a forma nova, que a tela passa a gravar, é que
- * pode ser também um grupo `{"all":[...]}` ou `{"any":[...]}` (aninháveis).
+ * pode ser também um grupo `{"all":[...]}` ou `{"any":[...]}` do TOPO — o que
+ * a API aceita hoje (ver `conditionsSchema`); aninhar grupo em grupo é do
+ * AVALIADOR, não da porta.
  * `lib/automation/conditions.test.ts` cobre a regressão: um array antigo avalia
  * IGUAL ao que avaliava antes.
  *
@@ -43,6 +45,26 @@ export type ConditionOp =
   | "gte"
   | "lt"
   | "lte";
+
+/**
+ * Os operadores que NÃO pedem valor: "está vazio" e "está preenchido" perguntam
+ * pelo campo, não por um texto (#2727). Uma fonte só: a tela esconde o campo de
+ * valor, o formulário não o exige, o desenho não o descarta e o avaliador o
+ * ignora. Enquanto cada lugar tinha a sua lista, o `desenho-da-regra` filtrava
+ * por `value.trim()` e ENGOLIA a condição `is_empty` — a regra voltava sem
+ * condição nenhuma e passava a disparar para todo mundo.
+ */
+export const OPERADORES_SEM_VALOR: ReadonlySet<ConditionOp> = new Set<ConditionOp>([
+  "is_empty",
+  "is_not_empty",
+]);
+
+/**
+ * O teto de condições de UMA regra (#2727). Vale no TOPO: a lista simples e os
+ * filhos do grupo do topo. Antes desta fatia o teto era `10` no array; o schema
+ * aninhável tinha `50` por nível, o que AMPLIAVA o limite de qualquer regra.
+ */
+export const MAXIMO_DE_CONDICOES = 10;
 
 /** A ordem em que os operadores aparecem no seletor da tela. */
 export const OPS_DE_CONDICAO = [
@@ -82,6 +104,26 @@ export type Conditions = ConditionNode[] | ConditionGroup;
 
 function ehGrupo(no: ConditionNode): no is ConditionGroup {
   return typeof no === "object" && no !== null && !("field" in no);
+}
+
+/** Um nó é uma CONDIÇÃO de campo (tem `field`), não um grupo. */
+export function ehCondicaoDeCampo(no: ConditionNode): no is RuleCondition {
+  return typeof no === "object" && no !== null && "field" in no;
+}
+
+/**
+ * Quantas CONDIÇÕES de campo a regra tem, somando o grupo do topo. O que a tela
+ * de operação mostra como "N condições" antes de alguém ligar a regra — e o que
+ * contava `0` quando o guardado era `{any:[…]}` (um objeto não tem `.length`).
+ */
+export function contarCondicoes(conditions: Conditions): number {
+  const soma = (nos: readonly ConditionNode[]): number =>
+    nos.reduce((total, no) => total + (ehGrupo(no) ? soma(no.all ?? no.any ?? []) : 1), 0);
+  if (Array.isArray(conditions)) return soma(conditions);
+  // Vem de jsonb: pode ser `null`/`undefined`/qualquer coisa. Contar 0 é a
+  // resposta honesta — estourar aqui derrubaria a tela de operação inteira.
+  const grupo = conditions as ConditionGroup | null | undefined;
+  return soma(grupo?.all ?? grupo?.any ?? []);
 }
 
 /** Vazio = ausente, string vazia/branca ou lista vazia. `0` e `false` NÃO são vazios. */
@@ -208,22 +250,36 @@ export const conditionSchema = z.object({
   value: z.string().max(500),
 });
 
-const conditionGroupSchema: z.ZodType<ConditionGroup> = z.lazy(() =>
-  z.union([
-    z.object({ all: z.array(conditionNodeSchema).max(50), any: z.undefined().optional() }),
-    z.object({ any: z.array(conditionNodeSchema).max(50), all: z.undefined().optional() }),
-  ]),
-);
-
-const conditionNodeSchema: z.ZodType<ConditionNode> = z.lazy(() =>
-  z.union([conditionSchema, conditionGroupSchema]),
-);
+/**
+ * O grupo do TOPO — e só ele (#2727, escopo desta fatia).
+ *
+ * Os filhos são CONDIÇÕES de campo, nunca outro grupo: a API REST de hoje ainda
+ * aceitava aninhamento e nenhuma tela o desenha (`RuleEditor` carrega com
+ * `listaDoTopo.filter(ehLinha)` e salva só as linhas, então `{all:[A,{any:[B,C]}]}`
+ * aberto e salvo no formulário voltava como `[A]` — a regra perdia o `any`). Até
+ * existir tela que o edite, o aninhamento não entra: o que não se edita não se
+ * grava. O AVALIADOR (`avaliaNo`) continua entendendo aninhamento, de propósito:
+ * ele é leitura defensiva de jsonb que já esteja gravado no banco.
+ *
+ * O `any: z.undefined().optional()` do outro ramo mantém o combinador ÚNICO: um
+ * objeto com as duas chaves não passa por nenhum dos dois.
+ */
+const conditionGroupSchema: z.ZodType<ConditionGroup> = z.union([
+  z.object({
+    all: z.array(conditionSchema).max(MAXIMO_DE_CONDICOES),
+    any: z.undefined().optional(),
+  }),
+  z.object({
+    any: z.array(conditionSchema).max(MAXIMO_DE_CONDICOES),
+    all: z.undefined().optional(),
+  }),
+]);
 
 /**
- * O que a API aceita em `conditions`: a lista antiga (≡ `all`) ou um grupo.
- * Aninhável — um nó pode ser outro grupo.
+ * O que a API aceita em `conditions`: a lista antiga (≡ `all`) ou o grupo do
+ * topo. O teto de `MAXIMO_DE_CONDICOES` mora no TOPO, nos dois formatos.
  */
 export const conditionsSchema: z.ZodType<Conditions> = z.union([
-  z.array(conditionNodeSchema).max(50),
+  z.array(conditionSchema).max(MAXIMO_DE_CONDICOES),
   conditionGroupSchema,
 ]);

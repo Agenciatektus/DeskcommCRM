@@ -37,6 +37,7 @@ import {
 } from "@/lib/automation/gatilhos-de-tempo";
 import { configAoSalvarDaTela } from "@/lib/automation/config-ao-salvar";
 import {
+  OPERADORES_SEM_VALOR,
   type ConditionNode,
   type ConditionOp,
   type Conditions,
@@ -209,10 +210,11 @@ export const OP_LABELS: Record<Op, string> = {
 
 /**
  * Operadores que NÃO pedem valor: "está vazio" e "está preenchido" perguntam
- * pelo campo, não por um texto. A tela esconde o campo de valor e o save não o
- * exige; o avaliador ignora o valor nesses operadores.
+ * pelo campo, não por um texto. A lista é a MESMA do desenho e do avaliador
+ * (`OPERADORES_SEM_VALOR`, #2727) — enquanto cada tela tinha a sua cópia, o
+ * desenho descartava a condição `is_empty` no save e a regra ia vazia.
  */
-const OPS_SEM_VALOR = new Set<Op>(["is_empty", "is_not_empty"]);
+const OPS_SEM_VALOR = OPERADORES_SEM_VALOR;
 
 /** Um nó de linha é uma condição de campo (tem `field`), não um grupo. */
 function ehLinha(no: ConditionNode): no is { field: string; op: Op; value: string } {
