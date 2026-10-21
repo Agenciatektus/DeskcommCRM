@@ -15,7 +15,8 @@ class ViewportFalso extends EventTarget {
   height = 844;
   width = 390;
   offsetTop = 0;
-  mudar(parcial: Partial<Pick<ViewportFalso, "height" | "width" | "offsetTop">>) {
+  scale = 1;
+  mudar(parcial: Partial<Pick<ViewportFalso, "height" | "width" | "offsetTop" | "scale">>) {
     Object.assign(this, parcial);
     this.dispatchEvent(new Event("resize"));
   }
@@ -23,10 +24,14 @@ class ViewportFalso extends EventTarget {
 
 let vv: ViewportFalso;
 let grosso = true;
+/** A largura do layout (`documentElement.clientWidth`): só muda quando o aparelho gira. */
+let larguraDoLayout = 390;
 
 beforeEach(() => {
   vv = new ViewportFalso();
   grosso = true;
+  larguraDoLayout = 390;
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockImplementation(() => larguraDoLayout);
   vi.stubGlobal("visualViewport", vv);
   vi.stubGlobal(
     "matchMedia",
@@ -36,6 +41,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function montar(ativo = true) {
@@ -62,8 +68,25 @@ describe("useAlturaVisivel", () => {
 
   it("girar o aparelho zera a maior altura — paisagem não conta como teclado", () => {
     const { hook } = montar();
+    larguraDoLayout = 844;
     act(() => vv.mudar({ width: 844, height: 390 }));
     expect(hook.result.current).toBe(false);
+  });
+
+  // O ZOOM DO SAFARI. Ampliada, a área visível encolhe em px de CSS nas DUAS
+  // direções (largura e altura divididas pela escala) sem o layout mudar. A
+  // régua compara em px de TELA (`height * scale`) e só zera quando a largura
+  // do LAYOUT muda — não a do `visualViewport`, que o zoom também muda.
+  it("zoom de 1,15 sem teclado não é teclado", () => {
+    const { hook } = montar();
+    act(() => vv.mudar({ scale: 1.15, width: 390 / 1.15, height: 844 / 1.15 }));
+    expect(hook.result.current).toBe(false);
+  });
+
+  it("zoom de 1,15 COM teclado é teclado aberto (o foco num campo de 14px no iPhone)", () => {
+    const { hook } = montar();
+    act(() => vv.mudar({ scale: 1.15, width: 390 / 1.15, height: 500 / 1.15, offsetTop: 120 }));
+    expect(hook.result.current).toBe(true);
   });
 
   it("encolher pouco (barra do navegador recolhendo) não é teclado", () => {

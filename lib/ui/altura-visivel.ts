@@ -21,6 +21,12 @@ export const ENCOLHIMENTO_DO_TECLADO = 150;
  * no Android com `interactive-widget=resizes-content` o `innerHeight` encolhe
  * junto com o teclado, e no iOS (que ignora `interactive-widget`) não muda.
  *
+ * Imune ao zoom do Safari: ampliada, a área visível encolhe em px de CSS nas
+ * duas direções sem o layout mudar. Por isso a altura é comparada em px de
+ * TELA (`height * scale`) e a rotação é lida na largura do LAYOUT
+ * (`documentElement.clientWidth`), não na do `visualViewport` — que o zoom
+ * também muda, e que zerava a régua justo no foco que abre o teclado.
+ *
  * Só liga com ponteiro grosso, lido aqui dentro (sem divergência de
  * hidratação): no computador, abrir o DevTools embaixo encolhe a janela do
  * mesmo jeito, e isso não pode esconder as ações da conversa.
@@ -36,17 +42,19 @@ export function useAlturaVisivel(alvo: RefObject<HTMLElement | null>, ativo: boo
     if (!ativo || !elemento || !vv) return;
     if (!window.matchMedia?.("(pointer: coarse)").matches) return;
 
+    const raiz = document.documentElement;
     let maior = 0;
-    let largura = vv.width;
+    let largura = raiz.clientWidth;
     const medir = (): boolean => {
-      if (vv.width !== largura) {
-        largura = vv.width;
+      if (raiz.clientWidth !== largura) {
+        largura = raiz.clientWidth;
         maior = 0;
       }
-      maior = Math.max(maior, vv.height);
+      const naTela = vv.height * vv.scale;
+      maior = Math.max(maior, naTela);
       elemento.style.setProperty("--vv-altura", `${vv.height}px`);
       elemento.style.setProperty("--vv-topo", `${vv.offsetTop}px`);
-      return vv.height < maior - ENCOLHIMENTO_DO_TECLADO;
+      return naTela < maior - ENCOLHIMENTO_DO_TECLADO;
     };
     const aoMudar = () => setTecladoAberto(medir());
 
