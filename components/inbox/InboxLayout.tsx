@@ -150,6 +150,19 @@ export function navegarNoInbox(
 }
 
 /**
+ * A LISTA ESCONDIDA NÃO GUARDA O FOCO. No celular a lista fica `invisible`
+ * atrás da conversa, e no Safari do iPhone tocar num botão não tira o foco do
+ * campo: a busca seguiria focada, com o teclado aberto, filtrando uma lista
+ * que ninguém vê. Só age com a lista de fato escondida — no computador ela
+ * segue visível e o foco (do teclado, inclusive) fica onde a pessoa o deixou.
+ */
+export function soltarFocoEscondido(lista: HTMLElement | null): void {
+  const ativo = document.activeElement;
+  if (!lista || !(ativo instanceof HTMLElement) || !lista.contains(ativo)) return;
+  if (getComputedStyle(lista).visibility === "hidden") ativo.blur();
+}
+
+/**
  * O QUE CADA ABA SIGNIFICA. Exportada porque é a definição em si — o defeito
  * que este mapa já teve (Minhas mostrando tudo que o atendente fechou) não
  * aparece em nenhuma tela até alguém reclamar, então vale prender por teste.
@@ -482,6 +495,11 @@ export function InboxLayout({
   // O teclado do celular, medido só com conversa aberta (ver `colunasDoCelular`).
   const conversaRef = useRef<HTMLDivElement | null>(null);
   const tecladoAberto = useAlturaVisivel(conversaRef, Boolean(selectedId));
+  const listaRef = useRef<HTMLDivElement | null>(null);
+  // Depois de pintar: só então a lista já está `invisible` (ver `soltarFocoEscondido`).
+  useEffect(() => {
+    if (selectedId) soltarFocoEscondido(listaRef.current);
+  }, [selectedId]);
 
   const claim = useClaimConversation();
   const close = useCloseConversation();
@@ -817,6 +835,7 @@ export function InboxLayout({
         `md` — onde as duas colunas cabem juntas e a regra não se aplica.
       */}
       <div
+        ref={listaRef}
         className={cn(
           "h-full min-h-0 flex-col border-r border-border md:flex",
           colunas.lista,
