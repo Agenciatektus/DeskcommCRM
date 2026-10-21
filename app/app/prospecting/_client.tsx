@@ -859,9 +859,10 @@ export function ProspectingClient() {
                   </p>
                 )}
                 {/* A grade mede o CARD, não a janela: em 1024px o card divide a tela com a
-                    lista de campanhas e 5 colunas espremiam o rótulo. 5 contadores só
-                    cabem sem órfão em 3 colunas ([3,2]) ou 5 ([5]); 2 deixa um sozinho. */}
-                <div className="mt-5 grid grid-cols-3 gap-4 @xl:grid-cols-5">
+                    lista de campanhas e colunas demais espremiam o rótulo. São 6 contadores
+                    (o score médio é o 6º): 3 colunas ([3,3]) no card comum e 6 só no card
+                    bem largo; 5 ou 4 colunas deixariam um contador sozinho na última linha. */}
+                <div className="mt-5 grid grid-cols-3 gap-4 @3xl:grid-cols-6">
                   {[
                     [t("Encontrados"), candidates.length],
                     [t("Na fila"), count(["queued", "sending"])],
