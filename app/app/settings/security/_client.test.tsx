@@ -23,6 +23,9 @@ vi.mock("@/app/actions/settings/regenerateRecoveryCodes", () => ({
 vi.mock("@/app/actions/settings/signOutEverywhere", () => ({
   signOutEverywhere: sair,
 }));
+vi.mock("@/app/actions/settings/esquecerDispositivosConfiaveis", () => ({
+  esquecerDispositivosConfiaveis: vi.fn(),
+}));
 vi.mock("@/app/actions/auth/politicaDeMfa", () => ({
   definirExigenciaDeMfa: vi.fn(),
   desativarMfaDaConta: desligarMfa,
@@ -55,6 +58,7 @@ function renderTela(props: Partial<React.ComponentProps<typeof SecurityClient>> 
       podeExigirDaEquipe={false}
       papelMinimo="none"
       diasDeCarencia={0}
+      dispositivos={[]}
       {...props}
     />,
   );

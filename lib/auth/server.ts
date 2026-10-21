@@ -579,5 +579,13 @@ export async function mfaEmDivida(): Promise<boolean> {
   //
   // Cadastrar e provar são perguntas diferentes. Quem TEM fator prova, sempre.
   if (!(await isMfaEnrolled())) return false;
-  return (await sessionAal()) !== "aal2";
+  if ((await sessionAal()) === "aal2") return false;
+  // `aal1` com fator: só o banco sabe se esta sessão foi reconhecida por um
+  // dispositivo confiável (`lib/auth/dispositivo-confiavel.ts`). Pergunta à
+  // MESMA função que as definer cobram, para app e banco não divergirem — e
+  // falha fechado: leitura que não aconteceu não vira "provada".
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("fn_session_mfa_proven");
+  if (error) throw error;
+  return data !== true;
 }

@@ -37,6 +37,8 @@ function preparar({ temFator, aal }: { temFator: boolean; aal: "aal1" | "aal2" }
   vi.mocked(loadAuthUser).mockResolvedValue({ id: "eu", is_platform_admin: false } as never);
   vi.mocked(resolveActiveOrg).mockResolvedValue({ orgId: "org", role: "admin" } as never);
   vi.mocked(createClient).mockResolvedValue({
+    // `fn_session_mfa_proven`: nenhum dispositivo confiável reconhece esta sessão.
+    rpc: async () => ({ data: false, error: null }),
     auth: {
       // Os fatores vêm do `getUser()` — a mesma ida ao GoTrue que `loadAuthUser` faz.
       getUser: async () => ({
