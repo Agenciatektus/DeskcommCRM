@@ -579,8 +579,10 @@ test.describe("atender pelo celular", () => {
   test("B-5 áudio que o aparelho não toca vira AAC e toca por blob:", async ({ page }) => {
     // O ogg/opus é gerado AQUI pelo ffmpeg do executor (o passo do e2e.yml
     // instala e reprova se faltar encoder): é o formato de toda nota de voz.
+    // 20s, e não 2: o desfecho "tocando" é lido depois do play(), e um áudio
+    // curto já teria acabado e voltado a "Reproduzir".
     const ogg = execFileSync("ffmpeg", [
-      "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+      "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=20",
       "-c:a", "libopus", "-f", "ogg", "pipe:1",
     ]);
     const caminho = `${orgId}/${conversa}/in-f2-${SUFIXO}.ogg`;
@@ -634,6 +636,23 @@ test.describe("atender pelo celular", () => {
       await expect
         .poll(() => page.evaluate(() => (window as unknown as { __plays: string[] }).__plays))
         .toContainEqual(expect.stringMatching(/^blob:/));
+
+      // O `__plays` anota o `src` ANTES do `play()` original: sozinho, ele
+      // passaria mesmo com o player caindo em "indisponível" porque o Chromium
+      // do executor não decodifica AAC. O relatório diz qual dos dois houve, e
+      // quando o executor declara AAC o player TEM de estar tocando.
+      const aac = await page.evaluate(() =>
+        document.createElement("audio").canPlayType('audio/mp4; codecs="mp4a.40.2"'),
+      );
+      const pausar = page.getByRole("button", { name: "Pausar áudio" });
+      const indisponivel = page.getByText("Mídia indisponível", { exact: false });
+      await expect(pausar.or(indisponivel).first()).toBeVisible({ timeout: 15_000 });
+      const desfecho = (await pausar.count()) > 0 ? "tocando" : "indisponível";
+      test.info().annotations.push({
+        type: "B-5 desfecho",
+        description: `canPlayType(AAC) do executor = "${aac}"; player ${desfecho}`,
+      });
+      if (aac !== "") expect(desfecho, "o executor toca AAC e o player não tocou").toBe("tocando");
     } finally {
       await db.from("messages").delete().eq("id", audio);
       await db.storage.from("whatsapp-media").remove([caminho]);
