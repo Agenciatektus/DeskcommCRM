@@ -121,15 +121,14 @@ export function sugestoesDeEtiqueta(args: {
  * O que o campo deve gravar para um texto digitado, ou `null` se nada.
  *
  * Precedência: a etiqueta EXISTENTE vence sempre (reusa a grafia, não cria
- * variante). Sem ela, o texto novo só vira etiqueta quando quem digita tem
- * permissão — é a última milha do "criar etiqueta nova só para gerente ou
- * administrador". Uma etiqueta já presente no contato nunca é readicionada.
+ * variante). Sem ela, o texto novo vira etiqueta: este PR NÃO decide quem pode
+ * criar (a trava de papel é o PR seguinte, valendo nos dois editores de
+ * `contacts.tags`). Uma etiqueta já presente no contato nunca é readicionada.
  */
 export function etiquetaParaGravar(args: {
   conhecidas: readonly string[];
   selecionadas: readonly string[];
   digitado: string;
-  podeCriarEtiqueta: boolean;
 }): string | null {
   const k = chaveDeComparacaoDeEtiqueta(args.digitado);
   if (k === "") return null;
@@ -137,7 +136,6 @@ export function etiquetaParaGravar(args: {
   if (jaTem.has(k)) return null;
   const existente = etiquetaExistentePara(args.conhecidas, args.digitado);
   if (existente) return existente;
-  if (!args.podeCriarEtiqueta) return null;
   // A grafia de uma etiqueta NOVA passa pela régua do banco (a mesma do PATCH):
   // o que o autocompletar cria é o que o filtro `?tag=` casa.
   return normalizarTag(args.digitado);

@@ -18,13 +18,14 @@
  * consultas e o deixaria impossível de testar sem rede — então ele recebe as
  * duas listas prontas, como `ChipDeEtiqueta` recebe a cor.
  *
- * ─── Criar etiqueta nova: quem decide é quem chama ──────────────────────────
+ * ─── Criar etiqueta nova ────────────────────────────────────────────────────
  *
- * `podeCriarEtiqueta` chega calculado pela tela (o guard de papel é um só, em
- * `_client.tsx`, com `roleAtLeast` — a comparação canônica de papel do cliente).
- * Sem a permissão, um texto que não casa com NENHUMA etiqueta conhecida não
- * vira etiqueta: o campo mostra o motivo e não grava. Com ela, aparece a opção
- * "Criar etiqueta", e é o único caminho pelo qual uma etiqueta nova entra.
+ * Este componente não decide QUEM cria etiqueta nova: um texto que não casa com
+ * nenhuma etiqueta conhecida vira uma etiqueta nova para quem estiver editando a
+ * ficha — o mesmo comportamento de antes do #2732. A trava de papel (valendo nos
+ * DOIS editores de `contacts.tags` e configurável) é o PR seguinte; mantê-la só
+ * aqui deixaria o campo com duas regras e deixaria a variante entrar pelo
+ * `ContactTagsEditor` do inbox.
  */
 import { useMemo, useState } from "react";
 
@@ -49,8 +50,6 @@ interface Props {
   vocabulario?: readonly string[] | null;
   /** `pipelines.settings.canonical_tags` do funil padrão. */
   canonicalTags?: readonly string[] | null;
-  /** Só gerente/admin criam etiqueta nova (calculado pela tela). */
-  podeCriarEtiqueta: boolean;
   disabled?: boolean;
   /** `id` do `<input>`, para o `<Label htmlFor>` de quem monta a ficha. */
   inputId?: string;
@@ -64,7 +63,6 @@ export function EtiquetasDoContato({
   onChange,
   vocabulario,
   canonicalTags,
-  podeCriarEtiqueta,
   disabled = false,
   inputId = "etiquetas-do-contato",
 }: Props) {
@@ -86,10 +84,8 @@ export function EtiquetasDoContato({
     (v) => chaveDeComparacaoDeEtiqueta(v) === chaveDeComparacaoDeEtiqueta(draft),
   );
   // O texto é NOVO quando não casa com nada conhecido nem com o que já está no
-  // contato. Só nesse caso "criar" faz sentido — e só com permissão.
+  // contato: é o único caso em que "criar" aparece (sem trava de papel neste PR).
   const textoNovo = digitou && !existente && !jaSelecionada;
-  const podeCriarAgora = podeCriarEtiqueta && textoNovo;
-  const semPermissaoParaCriar = !podeCriarEtiqueta && textoNovo;
   const noTeto = value.length >= MAXIMO_DE_ETIQUETAS;
 
   function adicionar(tag: string) {
@@ -110,7 +106,6 @@ export function EtiquetasDoContato({
       conhecidas,
       selecionadas: value,
       digitado: draft,
-      podeCriarEtiqueta,
     });
     if (alvo) adicionar(alvo);
   }
@@ -157,7 +152,7 @@ export function EtiquetasDoContato({
         aria-label={t("Adicionar etiqueta")}
       />
 
-      {(sugestoes.length > 0 || podeCriarAgora) && (
+      {(sugestoes.length > 0 || textoNovo) && (
         <div
           role="group"
           aria-label={t("Sugestões de etiquetas")}
@@ -175,7 +170,7 @@ export function EtiquetasDoContato({
               {tag}
             </button>
           ))}
-          {podeCriarAgora && (
+          {textoNovo && (
             <button
               type="button"
               onClick={confirmar}
@@ -188,12 +183,6 @@ export function EtiquetasDoContato({
             </button>
           )}
         </div>
-      )}
-
-      {semPermissaoParaCriar && (
-        <p className="text-xs text-muted-foreground">
-          {t("Só gerentes e administradores podem criar etiquetas novas.")}
-        </p>
       )}
     </div>
   );

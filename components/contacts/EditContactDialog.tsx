@@ -45,11 +45,6 @@ interface Props {
   vocabulario?: readonly string[] | null;
   /** `pipelines.settings.canonical_tags` do funil padrão. */
   canonicalTags?: readonly string[] | null;
-  /**
-   * Criar etiqueta nova (issue #2732) — só gerente/admin. A tela calcula com o
-   * guard de papel canônico e passa pronto; o padrão é NÃO oferecer.
-   */
-  podeCriarEtiqueta?: boolean;
 }
 
 export function EditContactDialog({
@@ -59,7 +54,6 @@ export function EditContactDialog({
   customFieldDefs = [],
   vocabulario,
   canonicalTags,
-  podeCriarEtiqueta = false,
 }: Props) {
   const t = useT();
   const perfil = perfilDoPais(useActiveOrg()?.country);
@@ -161,7 +155,6 @@ export function EditContactDialog({
               onChange={(next) => form.setValue("tags", next, { shouldDirty: true })}
               vocabulario={vocabulario}
               canonicalTags={canonicalTags}
-              podeCriarEtiqueta={podeCriarEtiqueta}
               disabled={update.isPending}
             />
           </div>

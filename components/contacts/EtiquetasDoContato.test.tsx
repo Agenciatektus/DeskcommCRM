@@ -1,14 +1,16 @@
 /**
  * O autocompletar de etiquetas da ficha do contato (issue #2732).
  *
- * Prova os três critérios da entrega, cada um por um caso:
+ * Prova os critérios da entrega, cada um por um caso:
  *
  *   1. digitar oferece as etiquetas JÁ usadas na organização e as
  *      `canonical_tags` do funil — as duas fontes;
  *   2. gravar reusa a etiqueta EXISTENTE (caixa/acento ignorados na comparação),
  *      nunca cria uma variante de grafia;
- *   3. criar etiqueta nova SÓ aparece para quem tem permissão — sem ela, o campo
- *      não oferece a opção e não grava texto novo.
+ *   3. um texto NOVO vira etiqueta nova para quem está editando a ficha — sem
+ *      trava de papel. A trava (valendo nos dois editores de `contacts.tags` e
+ *      configurável) é o PR seguinte, e é lá que os casos de recusa por papel
+ *      voltam a fazer sentido.
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -18,14 +20,7 @@ import { EtiquetasDoContato } from "./EtiquetasDoContato";
 
 function renderar(props: Partial<Parameters<typeof EtiquetasDoContato>[0]> = {}) {
   const onChange = vi.fn();
-  render(
-    <EtiquetasDoContato
-      value={[]}
-      onChange={onChange}
-      podeCriarEtiqueta={false}
-      {...props}
-    />,
-  );
+  render(<EtiquetasDoContato value={[]} onChange={onChange} {...props} />);
   return onChange;
 }
 
@@ -68,24 +63,9 @@ describe("EtiquetasDoContato — autocompletar (issue #2732)", () => {
     expect(onChange).not.toHaveBeenCalledWith(["sao paulo"]);
   });
 
-  it("sem permissão: o texto novo NÃO vira etiqueta e não há opção de criar", async () => {
+  it("texto novo: a opção de criar aparece e grava a etiqueta nova (qualquer papel)", async () => {
     const user = userEvent.setup();
-    const onChange = renderar({ vocabulario: ["vip"], podeCriarEtiqueta: false });
-
-    await user.type(campo(), "cliente ouro");
-    expect(screen.queryByTestId("criar-etiqueta")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Criar etiqueta/)).not.toBeInTheDocument();
-
-    await user.keyboard("{Enter}");
-    expect(onChange).not.toHaveBeenCalled();
-    expect(
-      screen.getByText("Só gerentes e administradores podem criar etiquetas novas."),
-    ).toBeInTheDocument();
-  });
-
-  it("com permissão (gerente/admin): a opção de criar aparece e grava a etiqueta nova", async () => {
-    const user = userEvent.setup();
-    const onChange = renderar({ vocabulario: ["vip"], podeCriarEtiqueta: true });
+    const onChange = renderar({ vocabulario: ["vip"] });
 
     await user.type(campo(), "Cliente Ouro");
     const criar = screen.getByTestId("criar-etiqueta");
@@ -93,6 +73,15 @@ describe("EtiquetasDoContato — autocompletar (issue #2732)", () => {
 
     await user.click(criar);
     // A régua do banco (normalizarTag) decide a grafia da etiqueta NOVA.
+    expect(onChange).toHaveBeenCalledWith(["cliente ouro"]);
+  });
+
+  it("texto novo: Enter confirma a etiqueta nova, sem depender de papel", async () => {
+    const user = userEvent.setup();
+    const onChange = renderar({ vocabulario: ["vip"] });
+
+    await user.type(campo(), "Cliente Ouro");
+    await user.keyboard("{Enter}");
     expect(onChange).toHaveBeenCalledWith(["cliente ouro"]);
   });
 });
