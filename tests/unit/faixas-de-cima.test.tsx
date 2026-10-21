@@ -86,6 +86,19 @@ describe("quem desconta as faixas", () => {
     expect(inbox).toMatch(/h-\[calc\(100dvh-var\(--faixas-de-cima,0px\)-3\.5rem/);
   });
 
+  it("a barra de cima e a lateral grudam ABAIXO das faixas, sem passar por baixo delas", () => {
+    // As faixas são `sticky top-0 z-50`. Com o TopBar e a Sidebar também em
+    // `top-0`, rolar uma tela longa deixava a faixa por cima da busca, do sino
+    // e do topo da barra lateral. E a Sidebar com `h-dvh` cheio fazia o
+    // documento medir tela + faixa no computador.
+    const topo = readFileSync("components/shell/TopBar.tsx", "utf8");
+    const lateral = readFileSync("components/shell/Sidebar.tsx", "utf8");
+    expect(topo).toMatch(/<header className="sticky top-\[var\(--faixas-de-cima,0px\)\] /);
+    expect(lateral).toMatch(
+      /"sticky top-\[var\(--faixas-de-cima,0px\)\] z-30 flex h-\[calc\(100dvh-var\(--faixas-de-cima,0px\)\)\] /,
+    );
+  });
+
   it("o layout do /app envolve as faixas com ele", () => {
     const layout = readFileSync("app/app/layout.tsx", "utf8");
     expect(layout).toMatch(/<FaixasDeCima>\s*<ImpersonateBanner[\s\S]*?<\/FaixasDeCima>/);

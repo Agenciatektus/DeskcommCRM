@@ -14,7 +14,8 @@ export const VARIAVEL_DAS_FAIXAS = "--faixas-de-cima";
  * do Inbox nascia abaixo da borda no celular justamente quando o WhatsApp
  * estava desconectado.
  *
- * Quem lê `--faixas-de-cima`: a casca (`AppShell`), a grade do Inbox e a
+ * Quem lê `--faixas-de-cima`: a casca (`AppShell`), o `TopBar` e a `Sidebar`
+ * (que grudam abaixo delas em vez de passar por baixo), a grade do Inbox e a
  * conversa em tela cheia do celular (`colunasDoCelular`).
  *
  * O invólucro é `sticky top-0` porque um sticky só gruda dentro da caixa do
