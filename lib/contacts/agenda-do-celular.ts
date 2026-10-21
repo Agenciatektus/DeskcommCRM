@@ -4,8 +4,10 @@
  * Importa para o CRM os contatos que estão salvos na AGENDA do aparelho
  * pareado, lidos do canal em páginas — o método opcional `listPhonebook` do
  * adapter (o transporte expõe o `GET /api/contacts/all`, paginado). O aparelho
- * já devolve o critério pronto: `isMyContact` é "está salvo na agenda",
- * `isWAContact` é "o número tem WhatsApp" e `isMe` é o próprio operador.
+ * devolve o critério em DUAS formas: `isMyContact` ("está salvo na agenda",
+ * WEBJS) ou, quando o motor não manda o marcador (NOWEB), o próprio `name` —
+ * o nome que a equipe gravou no celular. `isWAContact` é "o número tem
+ * WhatsApp" e `isMe` é o próprio operador (ver `salvoNaAgenda`).
  *
  * ─── A criação do contato NÃO é caminho novo ────────────────────────────────
  *
@@ -136,6 +138,11 @@ interface Candidato {
    * O nome que a equipe SALVOU no celular. Vai para `address_book_name`, o
    * campo que só a equipe vê — nunca para `name`/`display_name`, que o
    * `{{nome}}` das campanhas lê (decisão do mantenedor no #2439; doc 158).
+   *
+   * Nas telas da equipe este é o nome EXIBIDO: o título da ficha e a lista
+   * mostram `name`, e na falta dele o nome da agenda (`rotuloParaAEquipe`). O
+   * apelido do PERFIL do WhatsApp fica em `display_name` e no campo
+   * "Nome · WhatsApp" — é ele, não o da agenda, que as mensagens usam.
    */
   agenda: string | null;
   /**
@@ -183,6 +190,30 @@ export interface AgendaDeps {
 const SUFIXOS_DE_PESSOA = ["@c.us", "@s.whatsapp.net"];
 
 /**
+ * O contato do aparelho ESTÁ salvo na agenda dele?
+ *
+ * Três estados, porque os dois motores do WAHA não devolvem a mesma forma:
+ *
+ * - `isMyContact === true` — salvo; importa (é a forma do WEBJS).
+ * - `isMyContact === false` — NÃO salvo: o marcador explícito manda, mesmo que
+ *   venha um `name` (o nome pode ser o do perfil do WhatsApp).
+ * - `isMyContact` AUSENTE — o motor não manda o marcador (o `toWAContact` do
+ *   NOWEB monta `{id, lid, name, notify, verifiedName, imgUrl, status}`, sem
+ *   ele). Aí o `name` É o nome salvo no celular, e a presença dele é a única
+ *   prova de agenda que existe. `pushname`/`notify` descreve o PERFIL e NÃO
+ *   significa salvo — um contato só com pushname não está na agenda.
+ *
+ * Sem esta terceira coluna, uma instalação padrão (NOWEB) lê N contatos e
+ * importa ZERO: todo item chega sem `isMyContact` e caía no mesmo descarte de
+ * quem está explicitamente fora da agenda.
+ */
+function salvoNaAgenda(c: ContatoDoAparelho): boolean {
+  if (c.isMyContact === true) return true;
+  if (c.isMyContact === false) return false;
+  return (c.name ?? "").trim() !== "";
+}
+
+/**
  * O contato do aparelho É uma pessoa SALVA na agenda, com número utilizável?
  *
  * Devolve o telefone quando sim, e o MOTIVO quando não — o motivo vira contagem
@@ -190,7 +221,7 @@ const SUFIXOS_DE_PESSOA = ["@c.us", "@s.whatsapp.net"];
  * de quem olha o resumo e não tem resposta se o descarte for mudo.
  */
 export function candidatoDaAgenda(c: ContatoDoAparelho): { telefone: string } | { ignorado: string } {
-  if (c.isMyContact !== true) return { ignorado: "nao_salvo_na_agenda" };
+  if (!salvoNaAgenda(c)) return { ignorado: "nao_salvo_na_agenda" };
   if (c.isMe === true) return { ignorado: "numero_do_operador" };
   if (c.isWAContact === false) return { ignorado: "sem_whatsapp" };
   if (SUFIXOS_DE_PESSOA.every((s) => !c.id.endsWith(s))) return { ignorado: "nao_e_pessoa" };

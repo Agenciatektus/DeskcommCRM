@@ -96,16 +96,58 @@ async function sincronizar(f: ReturnType<typeof fakeDeps>, offset = 0) {
   });
 }
 
+/**
+ * O item CRU do `GET /api/contacts/all` no motor NOWEB (o padrão do kit):
+ * o `toWAContact` de lá monta `{id, lid, name, notify, verifiedName, imgUrl,
+ * status}` — SEM `isMyContact`. Aqui ele é normalizado como o cliente faz:
+ * `name` e `pushname` (o cliente lê `pushname`/`pushName`), e o marcador
+ * ausente vira `null` (`c.isMyContact ?? null`). O `notify` do NOWEB é o
+ * apelido do PERFIL — mesmo papel do `pushname`, e NÃO é prova de agenda.
+ */
+function doNoweb(cru: {
+  id: string;
+  lid?: string;
+  name?: string | null;
+  notify?: string | null;
+  pushname?: string | null;
+}): ContatoDoAparelho {
+  return {
+    id: cru.id,
+    name: cru.name ?? null,
+    pushname: cru.pushname ?? null,
+    isMyContact: null,
+    isWAContact: null,
+    isMe: null,
+  };
+}
+
 describe("candidatoDaAgenda", () => {
-  it("só entra quem está SALVO na agenda (isMyContact)", () => {
+  it("os três estados de \"salvo na agenda\": WEBJS explícito e NOWEB pelo `name`", () => {
+    // (d) WEBJS: `isMyContact === true` importa — o caso que já funcionava.
+    expect(candidatoDaAgenda(agenda("5511999990001@c.us"))).toEqual({ telefone: "+5511999990001" });
+    // (c) WEBJS: `isMyContact === false` NÃO importa — o marcador explícito manda.
     expect(candidatoDaAgenda(agenda("5511999990001@c.us", { isMyContact: false }))).toEqual({
       ignorado: "nao_salvo_na_agenda",
     });
-    // Marcador ausente é "não sei" — e "não sei" não é convite a importar.
-    expect(candidatoDaAgenda(agenda("5511999990001@c.us", { isMyContact: null }))).toEqual({
+    // (a) NOWEB: sem o marcador, o `name` (o nome SALVO no celular) é a prova.
+    expect(
+      candidatoDaAgenda(
+        doNoweb({ id: "5511999990001@c.us", lid: "100000000000001@lid", name: "Maria da Agenda", notify: "maria.perfil" }),
+      ),
+    ).toEqual({ telefone: "+5511999990001" });
+    // (b) NOWEB SEM `name`: só pushname/notify descreve o PERFIL — não está na agenda.
+    expect(candidatoDaAgenda(doNoweb({ id: "5511999990002@c.us", notify: "jose.perfil" }))).toEqual({
       ignorado: "nao_salvo_na_agenda",
     });
-    expect(candidatoDaAgenda(agenda("5511999990001@c.us"))).toEqual({ telefone: "+5511999990001" });
+    // `name` só com espaços não é nome salvo: o trim decide.
+    expect(candidatoDaAgenda(doNoweb({ id: "5511999990003@c.us", name: "   " }))).toEqual({
+      ignorado: "nao_salvo_na_agenda",
+    });
+    // `isMyContact: false` com `name` continua fora: quem está fora da agenda
+    // não entra só porque o nome veio preenchido.
+    expect(
+      candidatoDaAgenda(agenda("5511999990004@c.us", { isMyContact: false, name: "Quem não foi salvo" })),
+    ).toEqual({ ignorado: "nao_salvo_na_agenda" });
   });
 
   it("corta operador, grupo, identidade opaca e quem não tem WhatsApp", () => {
@@ -155,6 +197,31 @@ describe("sincronizarAgendaDoCelular", () => {
       { organizationId: ORG, telefone: "+5511999990001", chatId: "5511999990001@c.us", notify: "maria.perfil" },
     ]);
     expect(f.emits).toEqual(["contato-1"]);
+  });
+
+  it("NOWEB (sem `isMyContact`): importa pelo `name` da agenda e descarta quem só tem perfil", async () => {
+    const f = fakeDeps({
+      paginas: [[
+        // A forma do NOWEB, o motor padrão do kit: `name` = salvo no celular.
+        doNoweb({ id: "5511999990001@c.us", lid: "100000000000001@lid", name: "Maria da Agenda", notify: "maria.perfil" }),
+        // O mesmo motor, sem `name`: só o apelido do PERFIL (notify/pushname).
+        doNoweb({ id: "5511999990002@c.us", notify: "jose.perfil" }),
+      ]],
+    });
+    const resumo = await sincronizar(f);
+    expect(resumo).toEqual({
+      lidos: 2,
+      importados: 1,
+      ja_existentes: 0,
+      ignorados: 1,
+      erros: 0,
+      truncado: false,
+      proximo_offset: null,
+    });
+    // Só o que tem nome SALVO no celular chega ao upsert — e o nome da agenda
+    // vai para o campo da equipe.
+    expect(f.upserts.map((u) => u.chatId)).toEqual(["5511999990001@c.us"]);
+    expect(f.nomes).toEqual([{ contactId: "contato-1", nome: "Maria da Agenda" }]);
   });
 
   it("o nome salvo na agenda vai para o campo da equipe, nunca para o nome que o cliente vê (#2439)", async () => {
