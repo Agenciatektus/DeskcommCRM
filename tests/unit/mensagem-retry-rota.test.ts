@@ -131,7 +131,7 @@ describe("POST /api/v1/messages/{id}/retry", () => {
     expect(trava!.eqs).toEqual(expect.arrayContaining([
       ["id", id], ["organization_id", "org-1"], ["status", "failed"], ["updated_at", "2026-10-21T10:00:00.123456+00:00"],
     ]));
-    expect(trava!.payload).toMatchObject({ status: "queued", error_code: null, error_message: null, metadata: { outra: 1 } });
+    expect(trava!.payload).toMatchObject({ status: "queued", error_code: null, error_message: null, external_id: null, metadata: { outra: 1 } });
     expect(trava!.payload!.metadata).not.toHaveProperty("queued_reason");
     expect(typeof trava!.payload!.sent_at).toBe("string");
   });
@@ -149,12 +149,13 @@ describe("POST /api/v1/messages/{id}/retry", () => {
   });
 
   it("ApiError do handler devolve o estado lido, pela trava, e repassa o erro", async () => {
+    state.linha = { ...state.linha, external_id: "id-do-canal-velho" };
     state.handler.mockRejectedValueOnce(new ApiError(403, "forbidden", undefined, "r", "Contato bloqueou o atendimento."));
     const res = await POST(req(), ctx());
     expect(res.status).toBe(403);
     const [, volta] = updates();
     expect(volta!.payload).toEqual({
-      status: "failed", error_code: "channel_disabled", error_message: "Canal desativado",
+      status: "failed", external_id: "id-do-canal-velho", error_code: "channel_disabled", error_message: "Canal desativado",
       metadata: { queued_reason: "velho", outra: 1 }, sent_at: "2026-10-21T10:00:00.000Z",
     });
     expect(volta!.eqs).toEqual(expect.arrayContaining([["status", "queued"], ["updated_at", "2026-10-21T12:00:01.000001+00:00"]]));

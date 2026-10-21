@@ -40,7 +40,7 @@ const TETO_POR_USUARIO = 20;
 const JANELA_SEGUNDOS = 60;
 
 const COLUNAS =
-  "id, organization_id, conversation_id, direction, type, status, error_code, error_message, body, media_storage_path, media_mime, media_size_bytes, reply_to_message_id, sent_via, sent_by_user_id, sent_at, metadata, updated_at";
+  "id, organization_id, conversation_id, external_id, direction, type, status, error_code, error_message, body, media_storage_path, media_mime, media_size_bytes, reply_to_message_id, sent_via, sent_by_user_id, sent_at, metadata, updated_at";
 
 export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
   const supportDenied = await requireSupportWrite();
@@ -108,6 +108,10 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       status: "queued",
       error_code: null,
       error_message: null,
+      // Sem id do canal enquanto está em voo: é assim que a ingestão reconhece o
+      // eco deste envio (e não o lê como resposta digitada no celular). O envio
+      // aceito grava o id novo; a recusa devolve o antigo.
+      external_id: null,
       metadata: metadataSemMotivo,
       // No WhatsApp do cliente a mensagem chega agora; no fio, ela vai para o fim.
       sent_at: new Date().toISOString(),
@@ -146,6 +150,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     await supabase.from("messages")
       .update({
         status: lida.status,
+        external_id: lida.external_id,
         error_code: lida.error_code,
         error_message: lida.error_message,
         metadata: lida.metadata,
