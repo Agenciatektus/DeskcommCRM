@@ -8,6 +8,7 @@ import { safeNext } from "@/lib/auth/safe-next";
 import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 import { createClient } from "@/lib/supabase/server";
 import { audit } from "@/lib/audit";
+import { logger } from "@/lib/logger";
 import { cookieSecure } from "@/lib/supabase/cookie-secure";
 import { confiarNesteDispositivo, DIAS_DE_CONFIANCA } from "@/lib/auth/dispositivo-confiavel";
 
@@ -110,8 +111,21 @@ export async function verifyMfa(code: string, next?: string, confiar = false): P
     userAgent,
   });
 
-  if (confiar) {
-    await confiarNesteDispositivo(user.id, userAgent);
+  // O código já foi provado e a sessão já é aal2: falhar em LEMBRAR o navegador
+  // não pode virar falha de login. Sem a linha, o próximo login só pede o código.
+  const lembrou =
+    confiar &&
+    (await confiarNesteDispositivo(user.id, totp.id, userAgent).then(
+      () => true,
+      (e: unknown) => {
+        logger.error("mfa_dispositivo_confiavel_falhou", {
+          userId: user.id,
+          message: e instanceof Error ? e.message : String(e),
+        });
+        return false;
+      },
+    ));
+  if (lembrou) {
     await audit({
       action: "auth.mfa_device_trusted",
       actorUserId: user.id,

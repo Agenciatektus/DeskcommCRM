@@ -23,8 +23,12 @@ import { cookieSecure } from "@/lib/supabase/cookie-secure";
  * e um cookie `Strict` não chegaria a `/auth/callback`.
  *
  * O que continua pedindo o código mesmo num dispositivo confiável: desligar a
- * própria verificação, trocar a senha (o GoTrue exige `aal2`) e a área da
- * plataforma (`requirePlatformAdmin`) — todos leem o `aal` cru do JWT.
+ * própria verificação, trocar a senha (o GoTrue exige `aal2`) e o poder de
+ * PLATAFORMA — a área `/admin`, a escrita de admin da plataforma e o atalho de
+ * `requireRole` que age em qualquer organização (`mfaEmDividaEstrita`).
+ *
+ * A confiança é do FATOR, não só da pessoa: remover o fator por qualquer caminho
+ * (desligar, código de recuperação, script de suporte) a invalida no banco.
  */
 
 export const COOKIE_DISPOSITIVO_CONFIAVEL = "mfa_dispositivo_confiavel";
@@ -55,12 +59,17 @@ function sessionIdDoAccessToken(accessToken: string): string | null {
  * Aproveita para apagar as confianças vencidas da pessoa, que é o único lugar
  * onde elas nasceriam e se acumulariam.
  */
-export async function confiarNesteDispositivo(userId: string, userAgent: string | null): Promise<void> {
+export async function confiarNesteDispositivo(
+  userId: string,
+  factorId: string,
+  userAgent: string | null,
+): Promise<void> {
   const token = randomBytes(32).toString("base64url");
   const admin = createAdminClient();
   await admin.from("mfa_trusted_devices").delete().eq("user_id", userId).lt("expires_at", new Date().toISOString());
   const { error } = await admin.from("mfa_trusted_devices").insert({
     user_id: userId,
+    factor_id: factorId,
     token_hash: hashDoToken(token),
     user_agent: userAgent?.slice(0, 300) ?? null,
     expires_at: new Date(Date.now() + DIAS_DE_CONFIANCA * UM_DIA_MS).toISOString(),
@@ -77,11 +86,16 @@ export async function confiarNesteDispositivo(userId: string, userAgent: string 
 
 /**
  * Na entrada (senha ou Google): este navegador tem uma confiança válida DESTA
- * pessoa? Se tem, amarra a sessão recém-criada a ela e devolve `true` — e o
- * banco passa a tratar a sessão como provada. Sem cookie, cookie de outra
- * pessoa ou confiança vencida: `false`, e a entrada segue para o código.
+ * pessoa, emitida para o fator que ela tem HOJE? Se tem, amarra a sessão
+ * recém-criada a ela e devolve `true` — e o banco passa a tratar a sessão como
+ * provada. Sem cookie, cookie de outra pessoa, fator trocado ou confiança
+ * vencida: `false`, e a entrada segue para o código.
  */
-export async function reconhecerDispositivoConfiavel(userId: string, accessToken: string): Promise<boolean> {
+export async function reconhecerDispositivoConfiavel(
+  userId: string,
+  factorId: string,
+  accessToken: string,
+): Promise<boolean> {
   const token = (await cookies()).get(COOKIE_DISPOSITIVO_CONFIAVEL)?.value;
   if (!token) return false;
   const sessionId = sessionIdDoAccessToken(accessToken);
@@ -91,6 +105,7 @@ export async function reconhecerDispositivoConfiavel(userId: string, accessToken
     .update({ session_id: sessionId, last_used_at: new Date().toISOString() })
     .eq("token_hash", hashDoToken(token))
     .eq("user_id", userId)
+    .eq("factor_id", factorId)
     .gt("expires_at", new Date().toISOString())
     .select("id");
   if (error) throw error;

@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
   const { data: fatores } = await supabase.auth.mfa.listFactors();
   const totpVerificado = fatores?.totp?.find((f) => f.status === "verified");
   const confiavel =
-    !!totpVerificado && !!data.session && (await reconhecerDispositivoConfiavel(usuario.id, data.session.access_token));
+    !!totpVerificado && !!data.session && (await reconhecerDispositivoConfiavel(usuario.id, totpVerificado.id, data.session.access_token));
   if (totpVerificado && !confiavel) {
     const params = new URLSearchParams({ factor: totpVerificado.id, next: safeNext(next, "/app") });
     return redirectTo(`/login/mfa?${params}`);

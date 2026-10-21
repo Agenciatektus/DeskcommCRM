@@ -111,7 +111,7 @@ describe("signInWithPassword — dispositivo confiável", () => {
     vi.mocked(reconhecerDispositivoConfiavel).mockResolvedValueOnce(true);
     const { signInWithPassword } = await import("./signInWithPassword");
     await signInWithPassword({ email: "dona@example.com", password: "senha-certa-123" }, "/app/inbox");
-    expect(vi.mocked(reconhecerDispositivoConfiavel)).toHaveBeenCalledWith("u1", "jwt-novo");
+    expect(vi.mocked(reconhecerDispositivoConfiavel)).toHaveBeenCalledWith("u1", "f1", "jwt-novo");
     expect(vi.mocked(redirect)).toHaveBeenCalledWith("/app/inbox");
   });
 });

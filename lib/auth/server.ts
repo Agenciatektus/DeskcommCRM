@@ -589,3 +589,14 @@ export async function mfaEmDivida(): Promise<boolean> {
   if (error) throw error;
   return data !== true;
 }
+
+/**
+ * A mesma dívida, SEM aceitar dispositivo confiável: quem tem fator precisa do
+ * `aal2` do GoTrue, o código provado nesta sessão. É a régua do poder de
+ * PLATAFORMA — escrita de admin da plataforma e o atalho de `requireRole` que
+ * age em qualquer organização —, onde um cookie roubado valeria todos os tenants.
+ */
+export async function mfaEmDividaEstrita(): Promise<boolean> {
+  if (!(await isMfaEnrolled())) return false;
+  return (await sessionAal()) !== "aal2";
+}

@@ -28,13 +28,16 @@ function comoUsuario(corpo: string, sessao = SESSAO, aal = "aal1", papel = "auth
 }
 
 const provada = (sessao = SESSAO, aal = "aal1") =>
-  comoUsuario("select public.fn_session_mfa_proven();", sessao, aal).split("\n").pop();
+  comoUsuario("select public.fn_session_mfa_proven();", sessao, aal)
+    .split("\n")
+    .filter((l) => l === "t" || l === "f")
+    .pop();
 
 function confiar(userId: string, sessao: string, expira: string) {
   sql(`
     delete from public.mfa_trusted_devices where user_id in ('${USUARIO}','${OUTRO}');
-    insert into public.mfa_trusted_devices (user_id, token_hash, session_id, expires_at)
-    values ('${userId}', md5(random()::text), '${sessao}', ${expira});
+    insert into public.mfa_trusted_devices (user_id, factor_id, token_hash, session_id, expires_at)
+    values ('${userId}', '${FATOR}', md5(random()::text), '${sessao}', ${expira});
   `);
 }
 
@@ -58,8 +61,8 @@ describe("0707 — dispositivo confiável da MFA", () => {
       `);
     for (const stmt of [
       `perform 1 from public.mfa_trusted_devices`,
-      `insert into public.mfa_trusted_devices (user_id, token_hash, session_id, expires_at)
-         values ('${USUARIO}', 'x', '${SESSAO}', now() + interval '1 day')`,
+      `insert into public.mfa_trusted_devices (user_id, factor_id, token_hash, session_id, expires_at)
+         values ('${USUARIO}', '${FATOR}', 'x', '${SESSAO}', now() + interval '1 day')`,
     ]) {
       expect(() => tentativa(stmt)).toThrow(/negado/);
     }
@@ -75,6 +78,21 @@ describe("0707 — dispositivo confiável da MFA", () => {
     confiar(USUARIO, SESSAO, "now() + interval '30 days'");
     expect(provada()).toBe("t");
     expect(provada(OUTRA_SESSAO)).toBe("f");
+  });
+
+  it("fator removido (por QUALQUER caminho) mata a confiança — mesmo com a linha de pé", () => {
+    confiar(USUARIO, SESSAO, "now() + interval '30 days'");
+    sql(`update auth.mfa_factors set status = 'unverified' where id = '${FATOR}';`);
+    try {
+      // Sem fator verificado a pessoa nem deve MFA; o que importa é que a
+      // confiança não sobreviva a um fator NOVO:
+      sql(`insert into auth.mfa_factors (id, user_id, status, factor_type)
+           values ('dddddddd-0707-4000-8000-0000000000f2', '${USUARIO}', 'verified', 'totp');`);
+      expect(provada()).toBe("f");
+    } finally {
+      sql(`delete from auth.mfa_factors where id = 'dddddddd-0707-4000-8000-0000000000f2';
+           update auth.mfa_factors set status = 'verified' where id = '${FATOR}';`);
+    }
   });
 
   it("confiança vencida não prova nada", () => {

@@ -61,12 +61,18 @@ beforeEach(() => {
 
 describe("confiarNesteDispositivo", () => {
   it("o banco guarda o HASH; o cookie leva o token, httpOnly, Lax e por 30 dias", async () => {
-    await confiarNesteDispositivo("u1", "Firefox");
+    await confiarNesteDispositivo("u1", "f1", "Firefox");
     const [nome, token, opcoes] = m.set.mock.calls[0]!;
     expect(nome).toBe(COOKIE_DISPOSITIVO_CONFIAVEL);
     expect(opcoes).toMatchObject({ httpOnly: true, sameSite: "lax", secure: true, maxAge: 30 * 86_400 });
-    const linha = m.insert.mock.calls[0]![0] as { user_id: string; token_hash: string; expires_at: string };
+    const linha = m.insert.mock.calls[0]![0] as {
+      user_id: string;
+      factor_id: string;
+      token_hash: string;
+      expires_at: string;
+    };
     expect(linha.user_id).toBe("u1");
+    expect(linha.factor_id).toBe("f1");
     expect(linha.token_hash).toBe(createHash("sha256").update(token).digest("hex"));
     expect(linha.token_hash).not.toContain(token);
     const dias = (new Date(linha.expires_at).getTime() - Date.now()) / 86_400_000;
@@ -77,19 +83,20 @@ describe("confiarNesteDispositivo", () => {
 
 describe("reconhecerDispositivoConfiavel", () => {
   it("sem cookie, não reconhece nem toca o banco", async () => {
-    expect(await reconhecerDispositivoConfiavel("u1", jwtCom({ session_id: "s1" }))).toBe(false);
+    expect(await reconhecerDispositivoConfiavel("u1", "f1", jwtCom({ session_id: "s1" }))).toBe(false);
     expect(m.update).not.toHaveBeenCalled();
   });
 
   it("amarra a sessão do token à confiança DESTA pessoa, pelo hash e dentro do prazo", async () => {
     m.jar.set(COOKIE_DISPOSITIVO_CONFIAVEL, "tok");
     m.linhas = [{ id: "d1" }];
-    expect(await reconhecerDispositivoConfiavel("u1", jwtCom({ session_id: "s1" }))).toBe(true);
+    expect(await reconhecerDispositivoConfiavel("u1", "f1", jwtCom({ session_id: "s1" }))).toBe(true);
     expect(m.update).toHaveBeenCalledWith(expect.objectContaining({ session_id: "s1" }));
     expect(m.filtros).toEqual(
       expect.arrayContaining([
         ["eq", "token_hash", createHash("sha256").update("tok").digest("hex")],
         ["eq", "user_id", "u1"],
+        ["eq", "factor_id", "f1"],
         ["gt", "expires_at", expect.any(String)],
       ]),
     );
@@ -97,13 +104,13 @@ describe("reconhecerDispositivoConfiavel", () => {
 
   it("nenhuma linha casou (outra pessoa, vencida, esquecida): não reconhece", async () => {
     m.jar.set(COOKIE_DISPOSITIVO_CONFIAVEL, "tok");
-    expect(await reconhecerDispositivoConfiavel("u1", jwtCom({ session_id: "s1" }))).toBe(false);
+    expect(await reconhecerDispositivoConfiavel("u1", "f1", jwtCom({ session_id: "s1" }))).toBe(false);
   });
 
   it("token sem session_id: não reconhece", async () => {
     m.jar.set(COOKIE_DISPOSITIVO_CONFIAVEL, "tok");
     m.linhas = [{ id: "d1" }];
-    expect(await reconhecerDispositivoConfiavel("u1", jwtCom({ sub: "u1" }))).toBe(false);
+    expect(await reconhecerDispositivoConfiavel("u1", "f1", jwtCom({ sub: "u1" }))).toBe(false);
     expect(m.update).not.toHaveBeenCalled();
   });
 });

@@ -57672,6 +57672,10 @@ notify pgrst,'reload schema';
 create table if not exists public.mfa_trusted_devices (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
+  -- O fator que o código provou. Sem FK (auth.mfa_factors é do GoTrue): a função
+  -- abaixo exige que ele ainda exista, então remover o fator por QUALQUER caminho
+  -- (desligar, código de recuperação, script de suporte) mata a confiança junto.
+  factor_id uuid not null,
   token_hash text not null unique,
   session_id uuid,
   user_agent text,
@@ -57697,8 +57701,9 @@ create or replace function public.fn_session_mfa_proven()
 returns boolean language sql stable security definer set search_path=public as $$
  select auth.uid() is not null and (coalesce(auth.jwt()->>'aal','aal1')='aal2' or not exists(
   select 1 from auth.mfa_factors where user_id=auth.uid() and factor_type='totp' and status='verified')
-  or exists(select 1 from public.mfa_trusted_devices d where d.user_id=auth.uid()
-   and d.session_id::text=auth.jwt()->>'session_id' and d.expires_at>now()));
+  or exists(select 1 from public.mfa_trusted_devices d
+   join auth.mfa_factors f on f.id=d.factor_id and f.user_id=d.user_id and f.status='verified'
+   where d.user_id=auth.uid() and d.session_id::text=auth.jwt()->>'session_id' and d.expires_at>now()));
 $$;
 revoke all on function public.fn_session_mfa_proven() from public, anon;
 grant execute on function public.fn_session_mfa_proven() to authenticated;

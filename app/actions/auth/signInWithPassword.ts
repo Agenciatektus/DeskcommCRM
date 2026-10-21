@@ -93,7 +93,7 @@ export async function signInWithPassword(input: LoginInput, next?: string): Prom
   const { data: factorsData } = await supabase.auth.mfa.listFactors();
   const verifiedTotp = factorsData?.totp?.find((f) => f.status === "verified");
   const confiavel =
-    !!verifiedTotp && !!data.session && (await reconhecerDispositivoConfiavel(data.user.id, data.session.access_token));
+    !!verifiedTotp && !!data.session && (await reconhecerDispositivoConfiavel(data.user.id, verifiedTotp.id, data.session.access_token));
   if (verifiedTotp && !confiavel) {
     return { ok: false, error: "mfa_required", challengeId: verifiedTotp.id };
   }

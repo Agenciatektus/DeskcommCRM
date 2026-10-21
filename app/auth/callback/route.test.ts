@@ -217,7 +217,7 @@ describe("GET /auth/callback", () => {
 
     const res = await GET(requisicao("code=abc&next=%2Fapp%2Finbox"));
 
-    expect(vi.mocked(reconhecerDispositivoConfiavel)).toHaveBeenCalledWith(USUARIO.id, "jwt-da-troca");
+    expect(vi.mocked(reconhecerDispositivoConfiavel)).toHaveBeenCalledWith(USUARIO.id, "factor-1", "jwt-da-troca");
     expect(await destino(res)).toBe("/app/inbox");
   });
 
