@@ -3451,6 +3451,7 @@
   "O canal recusou o envio. Confira a conexão em Conexões.": "The channel refused to send it. Check the connection in Connections.",
   "Não conseguimos preparar o arquivo para envio.": "We couldn't prepare the file for sending.",
   "Não foi possível enviar esta mensagem.": "This message couldn't be sent.",
+  "A mensagem não saiu de novo.": "The message didn't go out again.",
   "Aguardando conexão": "Waiting for connection",
   "Não enviada — sem conexão": "Not sent — no connection",
   "Enviar esta mensagem de novo?": "Send this message again?",

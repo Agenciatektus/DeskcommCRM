@@ -2223,6 +2223,7 @@
   "O canal recusou o envio. Confira a conexão em Conexões.": "渠道拒绝发送。请在“连接”中检查连接。",
   "Não conseguimos preparar o arquivo para envio.": "我们无法准备要发送的文件。",
   "Não foi possível enviar esta mensagem.": "无法发送此消息。",
+  "A mensagem não saiu de novo.": "消息再次发送失败。",
   "Aguardando conexão": "等待连接",
   "Não enviada — sem conexão": "未发送——无连接",
   "Enviar esta mensagem de novo?": "要再次发送这条消息吗？",

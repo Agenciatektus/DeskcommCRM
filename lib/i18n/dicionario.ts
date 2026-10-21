@@ -6304,6 +6304,9 @@ export const DICIONARIO: Traducoes = {
   "Não foi possível enviar esta mensagem.": {
     es: "No se pudo enviar este mensaje.",
   },
+  "A mensagem não saiu de novo.": {
+    es: "El mensaje no salió de nuevo.",
+  },
   "Aguardando conexão": {
     es: "Esperando conexión",
   },

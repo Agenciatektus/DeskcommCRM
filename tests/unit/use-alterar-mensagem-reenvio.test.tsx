@@ -10,6 +10,8 @@ const showApiError = vi.fn();
 vi.mock("@/lib/api/client", () => ({ apiClient: { post: (...args: unknown[]) => post(...args) } }));
 vi.mock("@/components/feedback/ApiErrorToast", () => ({ showApiError: (e: unknown) => showApiError(e) }));
 vi.mock("@/hooks/i18n/useT", () => ({ useT: () => (texto: string) => texto }));
+const toastErro = vi.fn();
+vi.mock("sonner", () => ({ toast: { error: (...a: unknown[]) => toastErro(...a), success: vi.fn() } }));
 
 import { useAlterarMensagem } from "@/hooks/inbox/useAlterarMensagem";
 
@@ -29,7 +31,7 @@ async function reenviar(hook: ReturnType<typeof setup>["hook"]) {
   });
 }
 
-afterEach(() => { post.mockReset(); showApiError.mockReset(); });
+afterEach(() => { post.mockReset(); showApiError.mockReset(); toastErro.mockReset(); });
 
 describe("reenvio pela bolha: depois de uma recusa a bolha mostra o estado real", () => {
   it("recusa do servidor recarrega o fio (a bolha decidiu com o relógio do aparelho)", async () => {
@@ -45,5 +47,32 @@ describe("reenvio pela bolha: depois de uma recusa a bolha mostra o estado real"
     const { hook } = setup();
     await reenviar(hook);
     expect(showApiError).not.toHaveBeenCalled();
+  });
+});
+
+describe("reenvio que o canal recusou de novo", () => {
+  it("a rota responde 200 com a linha em failed: a pessoa é avisada, com o motivo", async () => {
+    post.mockResolvedValueOnce({ status: "failed", error_code: "channel_disabled" });
+    const { hook } = setup();
+    await reenviar(hook);
+    expect(toastErro).toHaveBeenCalledTimes(1);
+    const [titulo, opcoes] = toastErro.mock.calls[0] as [string, { description: string }];
+    expect(titulo).toBe("A mensagem não saiu de novo.");
+    expect(opcoes.description).not.toBe("");
+    expect(showApiError).not.toHaveBeenCalled();
+  });
+
+  it("código sem frase cai na frase genérica, nunca no texto cru do canal", async () => {
+    post.mockResolvedValueOnce({ status: "failed", error_code: "codigo_novo" });
+    const { hook } = setup();
+    await reenviar(hook);
+    expect((toastErro.mock.calls[0] as [string, { description: string }])[1].description).toBe("Não foi possível enviar esta mensagem.");
+  });
+
+  it("reenvio aceito (queued/sent) não dispara aviso: a bolha muda sozinha", async () => {
+    post.mockResolvedValueOnce({ status: "queued", error_code: null });
+    const { hook } = setup();
+    await reenviar(hook);
+    expect(toastErro).not.toHaveBeenCalled();
   });
 });
