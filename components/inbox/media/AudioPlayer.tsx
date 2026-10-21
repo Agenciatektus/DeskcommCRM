@@ -2,7 +2,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useT } from "@/hooks/i18n/useT";
 
-import { Pause, Play } from "@/lib/ui/icons";
+import { toast } from "sonner";
+
+import { CircleNotch, Pause, Play } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
 import { MediaUnavailable } from "./MediaUnavailable";
@@ -62,6 +64,9 @@ export function AudioPlayer({ messageId, isOutbound, src, mime }: Props) {
   const [current, setCurrent] = useState(0);
   const [rateIdx, setRateIdx] = useState(0);
   const [failed, setFailed] = useState(false);
+  // Buscando a versão convertida: o botão diz que espera e ignora toques —
+  // um 2º toque pediria outra conversão e trocaria o áudio no meio.
+  const [carregando, setCarregando] = useState(false);
   // Modo conversão (F2): o aparelho não toca este formato. O `<audio>` fica sem
   // `src` até o toque, e o toque toca a versão AAC por `blob:` — em memória,
   // nunca em Cache Storage nem IndexedDB (D4 da ADR-0006).
@@ -134,13 +139,22 @@ export function AudioPlayer({ messageId, isOutbound, src, mime }: Props) {
     // elemento no WebKit para o play() de depois do await. Sem src, rejeita —
     // e tudo bem.
     el.play().catch(() => {});
+    setCarregando(true);
     try {
       const resposta = await fetch(`${mediaSrc(messageId)}?formato=aac`, { cache: "no-store" });
+      // Teto de conversões (429) ou conversor ocupado (503) é espera, não
+      // defeito: o botão fica, e o próximo toque tenta de novo.
+      if (resposta.status === 429 || resposta.status === 503) {
+        toast.warning(t("Muitas conversões de áudio seguidas. Tente em um minuto."));
+        return;
+      }
       if (!resposta.ok) throw new Error(String(resposta.status));
       blobRef.current = URL.createObjectURL(await resposta.blob());
     } catch {
       setFailed(true);
       return;
+    } finally {
+      setCarregando(false);
     }
     el.src = blobRef.current;
     if (RATES[rateIdx] !== 1) el.playbackRate = RATES[rateIdx]!;
@@ -149,7 +163,7 @@ export function AudioPlayer({ messageId, isOutbound, src, mime }: Props) {
 
   const toggle = () => {
     const el = audioRef.current;
-    if (!el) return;
+    if (!el || carregando) return;
     if (playing) {
       el.pause();
       setPlaying(false);
@@ -183,6 +197,7 @@ export function AudioPlayer({ messageId, isOutbound, src, mime }: Props) {
       <button
         type="button"
         aria-label={playing ? t("Pausar áudio") : t("Reproduzir áudio")}
+        aria-busy={carregando || undefined}
         onClick={toggle}
         className={cn(
           "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors lg:h-9 lg:w-9",
@@ -191,7 +206,9 @@ export function AudioPlayer({ messageId, isOutbound, src, mime }: Props) {
             : "bg-primary/10 text-primary hover:bg-primary/20",
         )}
       >
-        {playing ? (
+        {carregando ? (
+          <CircleNotch size={16} weight="bold" className="motion-safe:animate-spin" aria-hidden />
+        ) : playing ? (
           <Pause size={16} weight="fill" aria-hidden />
         ) : (
           <Play size={16} weight="fill" aria-hidden />

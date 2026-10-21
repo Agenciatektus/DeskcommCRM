@@ -3,6 +3,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { AudioPlayer } from "@/components/inbox/media/AudioPlayer";
 
+const aviso = vi.hoisted(() => vi.fn());
+vi.mock("sonner", () => ({ toast: { warning: aviso, error: vi.fn(), success: vi.fn() } }));
+
 beforeAll(() => {
   // jsdom não implementa playback — mocka o mínimo do HTMLMediaElement.
   Object.defineProperty(window.HTMLMediaElement.prototype, "play", {
@@ -119,6 +122,7 @@ describe("áudio que o aparelho não toca", () => {
     vi.unstubAllGlobals();
     criar.mockClear();
     revogar.mockClear();
+    aviso.mockClear();
     playMock().mockReset();
     playMock().mockResolvedValue(undefined);
   });
@@ -194,6 +198,56 @@ describe("áudio que o aparelho não toca", () => {
       audio.dispatchEvent(new Event("error"));
     });
     await waitFor(() => expect(screen.getByText(/mídia indisponível/i)).toBeInTheDocument());
+  });
+
+  it("conversão em curso: o botão diz que espera e o 2º toque não pede outra", async () => {
+    aparelhoToca("");
+    let entregar!: (r: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((r) => (entregar = r)));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AudioPlayer messageId="m3" isOutbound={false} mime="audio/ogg" />);
+    const botao = screen.getByRole("button", { name: /reproduzir/i });
+
+    fireEvent.click(botao);
+    await waitFor(() => expect(botao).toHaveAttribute("aria-busy", "true"));
+    fireEvent.click(botao);
+    fireEvent.click(botao);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      entregar({ ok: true, status: 200, blob: async () => new Blob(["mp4"]) } as Response);
+    });
+    expect(await screen.findByRole("button", { name: /pausar/i })).not.toHaveAttribute("aria-busy", "true");
+    expect(criar).toHaveBeenCalledTimes(1);
+  });
+
+  it("muitas conversões (429): avisa e deixa tentar de novo, sem 'indisponível'", async () => {
+    aparelhoToca("");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 429 }))
+      .mockResolvedValueOnce({ ok: true, status: 200, blob: async () => new Blob(["mp4"]) } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AudioPlayer messageId="m3" isOutbound={false} mime="audio/ogg" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /reproduzir/i }));
+    await waitFor(() => expect(aviso).toHaveBeenCalledWith("Muitas conversões de áudio seguidas. Tente em um minuto."));
+    expect(screen.queryByText(/mídia indisponível/i)).not.toBeInTheDocument();
+
+    const botao = await screen.findByRole("button", { name: /reproduzir/i });
+    await waitFor(() => expect(botao).not.toHaveAttribute("aria-busy", "true"));
+    fireEvent.click(botao);
+    expect(await screen.findByRole("button", { name: /pausar/i })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("conversor ocupado (503): mesmo aviso de esperar, sem 'indisponível'", async () => {
+    aparelhoToca("");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
+    render(<AudioPlayer messageId="m3" isOutbound={false} mime="audio/ogg" />);
+    fireEvent.click(screen.getByRole("button", { name: /reproduzir/i }));
+    await waitFor(() => expect(aviso).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/mídia indisponível/i)).not.toBeInTheDocument();
   });
 
   it("navegador que toca ogg com certeza: mídia quebrada é 'indisponível' na hora, sem conversão", async () => {
