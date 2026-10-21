@@ -29,6 +29,8 @@ import { extFromMime } from "@/lib/messaging/media/types";
 import { validateOutboundMedia } from "@/lib/messaging/media/upload-validation";
 import {
   VOICE_MIME,
+  TETO_REPRODUCAO_BYTES,
+  paraReproducaoAac,
   precisaTranscodificar,
   transcodificarNotaDeVoz,
 } from "@/lib/messaging/media/voice-transcode";
@@ -202,3 +204,41 @@ describe("nota de voz gravada no iPhone (F2)", () => {
   });
 });
 
+/**
+ * F2: o Safari do iPhone (antes do 18.4) não toca ogg/opus. Para tocar, o
+ * servidor converte NA HORA para AAC em MP4 e não guarda nada — a cópia
+ * derivada escaparia do expurgo e da anonimização.
+ */
+describe("paraReproducaoAac", () => {
+  it("converte para AAC em MP4 com faststart e devolve os bytes", async () => {
+    const run = vi.fn(async (args: string[], _cwd: string) => {
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(args[args.length - 1]!, Buffer.from("mp4-aac"));
+    });
+    const r = await paraReproducaoAac(Buffer.from("ogg"), { run });
+    const args = run.mock.calls[0]?.[0] ?? [];
+    expect(args).toEqual(expect.arrayContaining(["-vn", "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", "-f", "mp4"]));
+    expect(r.toString()).toBe("mp4-aac");
+  });
+
+  it("recusa entrada acima do teto sem chamar o ffmpeg", async () => {
+    const run = vi.fn(async () => {});
+    await expect(paraReproducaoAac(Buffer.alloc(TETO_REPRODUCAO_BYTES + 1), { run })).rejects.toThrow();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("ffmpeg falhando REJEITA — quem chama responde 502, não devolve o ogg intocável", async () => {
+    const run = vi.fn(async () => {
+      throw new Error("ffmpeg_exit_1");
+    });
+    await expect(paraReproducaoAac(Buffer.from("ogg"), { run })).rejects.toThrow();
+  });
+
+  it("saída vazia também rejeita", async () => {
+    const run = vi.fn(async (args: string[], _cwd: string) => {
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(args[args.length - 1]!, Buffer.alloc(0));
+    });
+    await expect(paraReproducaoAac(Buffer.from("ogg"), { run })).rejects.toThrow();
+  });
+});

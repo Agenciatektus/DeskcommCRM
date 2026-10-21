@@ -58,6 +58,13 @@ export const VOICE_MIME = "audio/ogg;codecs=opus";
 /** Teto de segurança: nota de voz é curta, e acima disto é outra coisa. */
 const MAX_BYTES = 16 * 1024 * 1024;
 
+/**
+ * Teto da conversão para TOCAR (F2): é CPU da VPS a cada toque, e 5MB de opus
+ * já são ~25 min de voz. Acima disso o aparelho mostra "indisponível" com a
+ * transcrição, em vez de travar o servidor.
+ */
+export const TETO_REPRODUCAO_BYTES = 5 * 1024 * 1024;
+
 /** Prazo de qualquer ffmpeg daqui: sem ele, um arquivo patológico prende o processo. */
 const PRAZO_FFMPEG_MS = 30_000;
 
@@ -155,3 +162,40 @@ export async function transcodificarNotaDeVoz(
   }
 }
 
+/**
+ * Áudio que o aparelho não toca (ogg/opus no Safari do iPhone antes do 18.4)
+ * → AAC em MP4, que todo navegador toca. F2 da ADR-0006.
+ *
+ * NADA é guardado: os bytes saem daqui direto para a resposta (`no-store`) e o
+ * aparelho toca em memória. Guardar a cópia no Storage criaria um arquivo
+ * derivado que o expurgo de mídia e a anonimização não alcançam.
+ *
+ * Ao contrário da nota de voz, falha REJEITA: devolver o ogg que o aparelho
+ * não toca seria responder 200 com um arquivo mudo. Quem chama responde 502.
+ *
+ * ponytail: converte a cada toque (CPU da VPS, com teto de 30/min por pessoa
+ * na rota). Se o custo pesar, guardar a cópia no Storage — mas só com o
+ * expurgo e a anonimização cobrindo a cópia, provados por teste.
+ */
+export async function paraReproducaoAac(
+  buffer: Buffer,
+  deps: { run?: typeof runFfmpeg } = {},
+): Promise<Buffer> {
+  if (buffer.length > TETO_REPRODUCAO_BYTES) throw new Error("audio_grande_demais");
+  const executar = deps.run ?? runFfmpeg;
+  const dir = await mkdtemp(join(tmpdir(), "tocar-"));
+  try {
+    const entrada = join(dir, "in.audio");
+    const saida = join(dir, "out.m4a");
+    await writeFile(entrada, buffer);
+    await executar(
+      ["-i", entrada, "-vn", "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", "-f", "mp4", saida],
+      dir,
+    );
+    const convertido = await readFile(saida);
+    if (convertido.length === 0) throw new Error("ffmpeg_saida_vazia");
+    return convertido;
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
