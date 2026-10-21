@@ -9,7 +9,8 @@
  * Redirects:
  *  - no user        → /login?next=/admin
  *  - no row         → /admin/forbidden
- *  - aal1 + (required OU fator cadastrado) → /login/mfa?next=/admin numa tela;
+ *  - aal1 + (required OU fator cadastrado) → /login/mfa?next=<caminho atual de
+ *    /admin> numa tela;
  *    numa rota, 403 `mfa_required` (ver `desafioDeMfa`)
  *
  * The middleware already does an early `fn_is_platform_admin` RPC check;
@@ -17,11 +18,13 @@
  * /admin layout (where redirects are cheap, DB calls are allowed in Node
  * runtime, and we have access to AAL state).
  */
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { fail, type ApiError } from "@/lib/api/wrappers";
 import { EscritaDePlatformAdminNegada } from "@/lib/auth/recusa-de-escrita-de-admin";
+import { safeNext } from "@/lib/auth/safe-next";
 import { mfaEmDivida } from "@/lib/auth/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -64,7 +67,7 @@ export async function requirePlatformAdmin(): Promise<PlatformAdminContext> {
   const temFator = !!user.factors?.some((f) => f.factor_type === "totp" && f.status === "verified");
   if (paRow.mfa_required || temFator) {
     const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aalData?.currentLevel !== "aal2") desafioDeMfa();
+    if (aalData?.currentLevel !== "aal2") await desafioDeMfa();
   }
 
   return {
@@ -78,15 +81,21 @@ export async function requirePlatformAdmin(): Promise<PlatformAdminContext> {
 }
 
 /**
- * A sessão que não provou o fator: a TELA vai ao desafio e a ROTA responde 403
- * `mfa_required`, com um erro só. O `digest` copiado do `redirect()` é o que o
- * runtime do Next lê para redirecionar o layout de `/admin`; a rota, que captura
+ * A sessão que não provou o fator: a TELA vai ao desafio, de volta para a página
+ * do painel onde estava, e a ROTA responde 403 `mfa_required`, com um erro só.
+ * O caminho vem do `x-pathname` do `proxy.ts`; fora de `/admin` (a URL de uma
+ * rota de API) ou recusado por `safeNext`, o destino é `/admin`.
+ *
+ * O `digest` copiado do `redirect()` é o que o runtime do Next lê para
+ * redirecionar o layout de `/admin`; a rota, que captura
  * o erro, o lê como a recusa nomeada (`falhaDaEscritaDePlatformAdmin`), e a
  * server action, como `{ ok: false, error: "mfa_required" }`.
  */
-function desafioDeMfa(): never {
+async function desafioDeMfa(): Promise<never> {
+  const caminho = (await headers()).get("x-pathname");
+  const destino = /^\/admin(\/|$)/.test(caminho ?? "") ? safeNext(caminho, "/admin") : "/admin";
   try {
-    redirect("/login/mfa?next=/admin");
+    redirect(`/login/mfa?next=${encodeURIComponent(destino)}`);
   } catch (redirecionamento) {
     const recusa = new EscritaDePlatformAdminNegada("mfa_required");
     throw Object.assign(recusa, {

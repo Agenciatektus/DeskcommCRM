@@ -24,6 +24,8 @@ const O = "22222222-2222-4222-8222-222222222222";
 
 const h = vi.hoisted(() => ({
   caminho: "/app/inbox",
+  /** Cabeçalhos que chegam SEM passar pelo proxy (caminho que o `matcher` exclui). */
+  semProxy: null as null | Record<string, string>,
   org: null as null | { orgId: string; role: string; interface_settings: null },
   politica: false,
 }));
@@ -46,6 +48,7 @@ vi.mock("@/lib/auth/server", async (importOriginal) => {
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined }),
   headers: async () => {
+    if (h.semProxy) return new Headers(h.semProxy);
     const { cabecalhosQueOProxyEntrega } = await import("./helpers/cabecalhos-do-proxy");
     return cabecalhosQueOProxyEntrega(`https://crm.exemplo${h.caminho}`);
   },
@@ -54,6 +57,7 @@ vi.mock("@supabase/ssr", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@supabase/ssr")>()),
   createServerClient: () => ({
     auth: { getUser: async () => ({ data: { user: { id: U } }, error: null }) },
+    rpc: async () => ({ data: true, error: null }),
   }),
 }));
 // O `digest` é o que o runtime do Next lê para redirecionar (o formato do `redirect()` real).
@@ -157,6 +161,7 @@ async function casca() {
 beforeEach(() => {
   vi.clearAllMocks();
   h.caminho = "/app/inbox";
+  h.semProxy = null;
   h.org = { orgId: O, role: "admin", interface_settings: null };
   h.politica = false;
   bancoDaOrganizacao();
@@ -174,6 +179,15 @@ describe("/app: quem tem fator prova a sessão antes de ver a casca", () => {
     sessao([{ status: "verified" }], "aal1");
     await expect(casca()).rejects.toThrow("REDIRECT:/login/mfa?next=%2Fapp");
   });
+
+  it.each(["//evil.example", "https://evil.example", "/\\evil.example"])(
+    "x-pathname que não veio do proxy (%j) → o destino é /app",
+    async (forjado) => {
+      h.semProxy = { "x-pathname": forjado };
+      sessao([{ status: "verified" }], "aal1");
+      await expect(casca()).rejects.toThrow("REDIRECT:/login/mfa?next=%2Fapp");
+    },
+  );
 
   it("nível de garantia ilegível conta como não provado (falha fechada)", async () => {
     sessao([{ status: "verified" }], null);
@@ -232,16 +246,45 @@ describe("/onboarding: a mesma regra", () => {
 describe("/admin: a mesma regra, com a política da plataforma desligada", () => {
   const linha = { user_id: U, scope: "full", mfa_required: false, revoked_at: null };
   /** Na tela, o redirect ao desafio (o `digest`); na rota, a recusa `mfa_required`. */
-  const desafio = { code: "mfa_required", digest: "NEXT_REDIRECT;replace;/login/mfa?next=/admin;307;" };
+  const desafio = (next: string) => ({
+    code: "mfa_required",
+    digest: `NEXT_REDIRECT;replace;/login/mfa?next=${encodeURIComponent(next)};307;`,
+  });
+  const TENANT = "44444444-4444-4444-8444-444444444444";
   async function guarda() {
     const { requirePlatformAdmin } = await import("@/lib/auth/requirePlatformAdmin");
     return requirePlatformAdmin();
   }
 
+  beforeEach(() => {
+    h.caminho = "/admin";
+  });
+
   it("fator verificado + sessão aal1 → desafio", async () => {
     sessao([{ status: "verified" }], "aal1", linha);
-    await expect(guarda()).rejects.toMatchObject(desafio);
+    await expect(guarda()).rejects.toMatchObject(desafio("/admin"));
   });
+
+  it("caminho profundo do painel → o desafio volta para ele mesmo", async () => {
+    h.caminho = `/admin/tenants/${TENANT}`;
+    sessao([{ status: "verified" }], "aal1", linha);
+    await expect(guarda()).rejects.toMatchObject(desafio(`/admin/tenants/${TENANT}`));
+  });
+
+  it("caminho fora do painel (a URL de uma rota de API) → o destino é /admin", async () => {
+    h.caminho = "/api/v1/admin/users";
+    sessao([{ status: "verified" }], "aal1", linha);
+    await expect(guarda()).rejects.toMatchObject(desafio("/admin"));
+  });
+
+  it.each(["//evil.example/admin", "https://evil.example/admin", "/admin/\\evil.example", "/admin/x\ty"])(
+    "x-pathname que não veio do proxy (%j) → o destino é /admin",
+    async (forjado) => {
+      h.semProxy = { "x-pathname": forjado };
+      sessao([{ status: "verified" }], "aal1", linha);
+      await expect(guarda()).rejects.toMatchObject(desafio("/admin"));
+    },
+  );
 
   it("controle: sem fator → entra", async () => {
     sessao([], "aal1", linha);
@@ -260,6 +303,6 @@ describe("/admin: a mesma regra, com a política da plataforma desligada", () =>
 
   it("controle: política exige + aal1 → desafio, como antes", async () => {
     sessao([], "aal1", { ...linha, mfa_required: true });
-    await expect(guarda()).rejects.toMatchObject(desafio);
+    await expect(guarda()).rejects.toMatchObject(desafio("/admin"));
   });
 });

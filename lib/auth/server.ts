@@ -11,6 +11,7 @@ import { combinarInterfaces } from "@/lib/navigation/interface";
 import { readSupportContext } from "@/lib/impersonate/support";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { safeNext } from "@/lib/auth/safe-next";
 import { logger } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -569,6 +570,6 @@ export async function exigirProvaDeMfa(): Promise<void> {
   if (!(await mfaEmDivida())) return;
   // `x-pathname` vem do `proxy.ts`, gravado ANTES do `NextResponse.next` — só o
   // que existe ali chega aqui (tests/unit/proxy-encaminha-o-caminho.test.ts).
-  const caminho = (await headers()).get("x-pathname") ?? "/app";
+  const caminho = safeNext((await headers()).get("x-pathname"), "/app");
   redirect(`/login/mfa?next=${encodeURIComponent(caminho)}`);
 }

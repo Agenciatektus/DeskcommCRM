@@ -24,6 +24,12 @@ import { arquivosDeCodigo, caminhoRelativo } from "./helpers/varrer-codigo";
  * varia é o que o Supabase responde sobre a pessoa e a sessão.
  */
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+// O `x-pathname` que o `proxy.ts` grava; o guarda monta dele o `next` do desafio.
+const cabecalho = vi.hoisted(() => ({ caminho: "/admin" }));
+vi.mock("next/headers", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/headers")>()),
+  headers: async () => new Headers({ "x-pathname": cabecalho.caminho }),
+}));
 vi.mock("@/lib/impersonate/support", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/impersonate/support")>()),
   requireSupportWrite: async () => null,
@@ -75,7 +81,10 @@ async function codigo(r: Response): Promise<[number, unknown]> {
   return [r.status, ((await r.json()) as { error?: { code?: string } }).error?.code];
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  cabecalho.caminho = "/admin";
+});
 
 describe("fator verificado + sessão aal1, política da plataforma desligada", () => {
   beforeEach(() => sessao({ fator: true, nivel: "aal1", admin: linha }));
@@ -88,11 +97,14 @@ describe("fator verificado + sessão aal1, política da plataforma desligada", (
     expect(await codigo(await escrita())).toEqual([403, "mfa_required"]);
   });
 
-  it("na TELA o mesmo erro é o redirect do Next ao desafio", async () => {
+  it("na TELA o mesmo erro é o redirect do Next ao desafio, de volta à página", async () => {
+    cabecalho.caminho = "/admin/incidents/33333333-3333-4333-8333-333333333333";
     const { requirePlatformAdmin } = await import("@/lib/auth/requirePlatformAdmin");
     const erro: unknown = await requirePlatformAdmin().then(() => null, (e: unknown) => e);
     expect(isRedirectError(erro)).toBe(true);
-    if (isRedirectError(erro)) expect(getURLFromRedirectError(erro)).toBe("/login/mfa?next=/admin");
+    if (isRedirectError(erro)) expect(getURLFromRedirectError(erro)).toBe(
+        `/login/mfa?next=${encodeURIComponent(cabecalho.caminho)}`,
+      );
   });
 });
 
