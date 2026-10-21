@@ -541,7 +541,7 @@ export function montarDadosDeAbordagem(
   // Só o DEFINITIVO é citável — e com a data, nunca "agora": o envio pode sair
   // dias depois da medição, e "agora" envelhece em mentira.
   if (site && !site.provisorio) {
-    const problemas = site.problemas.map(descreverProblema).filter(Boolean);
+    const problemas = site.problemas.map((p) => descreverProblema(p)).filter(Boolean);
     const dataMedicao = site.verificado_em.slice(0, 10).split("-").reverse().join("/");
     dados["Auditoria"] =
       `${ROTULOS_DA_CLASSE[site.classe]} (verificado em ${dataMedicao})` +

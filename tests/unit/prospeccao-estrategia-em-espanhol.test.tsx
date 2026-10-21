@@ -20,6 +20,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { DICIONARIO, traduzir } from "@/lib/i18n/dicionario";
 import {
+  blocoDeEstrategiaParaAgente,
+  montarDadosDeAbordagem,
   montarEstrategia,
   pontuarCandidato,
   vocabularioDoNicho,
@@ -167,6 +169,25 @@ describe("sem tradutor, o texto é o de antes (o que o agente recebe)", () => {
       "nota alta + volume de avaliações · verificação pendente",
     );
     expect(pontuarCandidato(null, null, "site-ok").motivo).toBe("site em ordem");
+  });
+
+  it("o campo Auditoria e o bloco de estratégia do prompt seguem em português", () => {
+    const dados = montarDadosDeAbordagem(
+      { name: "Clínica Vitta", category: null, address: null, website: "https://vitta.test/", rating: 4.9, socials: [] },
+      {
+        classe: "site-ruim",
+        problemas: ["nao-mobile", "http-503", "falta-tel"],
+        conteudo_resumo: null,
+        provisorio: false,
+        verificado_em: "2026-10-10T12:00:00.000Z",
+      },
+    );
+    expect(dados["Auditoria"]).toBe(
+      "Site com problemas (verificado em 10/10/2026) — não abre direito no celular; o site responde com erro (503); sem telefone clicável",
+    );
+    const bloco = blocoDeEstrategiaParaAgente(montarEstrategia({ ...base, classe: "fora-do-ar" }));
+    expect(bloco).toContain("Cenário: Site fora do ar");
+    expect(bloco).toContain("Ângulo: O site NÃO ABRE — quem clica encontra erro.");
   });
 
   it("chamar sem tradutor é o mesmo que passar a identidade, em toda a matriz", () => {
