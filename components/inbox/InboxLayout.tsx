@@ -43,6 +43,7 @@ import { togglePainelDoContato } from "@/app/actions/inbox/togglePainelDoContato
 import type { AvisoDeRascunho } from "@/lib/inbox/rascunho-sugerido";
 import { buscaValeConsulta } from "@/lib/inbox/termo-de-busca";
 import { useAutomaticoAtivo } from "@/hooks/ai/useAutomaticoAtivo";
+import { useAlturaVisivel } from "@/lib/ui/altura-visivel";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import {
   LIMITES_FICHA,
@@ -74,11 +75,35 @@ import {
  *
  * Com uma pergunta só, "as duas escondidas" deixa de ser representável.
  * `md:flex` em ambas: no desktop as duas colunas convivem e a regra não vale.
+ *
+ * CONVERSA EM TELA CHEIA (F2 da ADR-0006). Escolhida, a conversa vira uma
+ * camada `fixed` abaixo do `md`, em vez de um layout novo:
+ *
+ *   - `z-[45]` cobre o TopBar (z-20) e a barra de abas (z-40) sem que ninguém
+ *     os edite, e fica abaixo das faixas de cima e dos portais Radix (z-50);
+ *   - o topo desconta `--faixas-de-cima`: o aviso de canal caído é o único
+ *     sinal de "nada entra nem sai" quando só há um número;
+ *   - `--vv-topo`/`--vv-altura` (`useAlturaVisivel`) colam a camada na área
+ *     visível com o teclado aberto; sem eles vale o `100dvh`;
+ *   - a área segura de baixo sai quando o teclado abre, porque aí o indicador
+ *     de home não está na tela.
+ *
+ * A lista fica `invisible`, e não `hidden`: sai da frente, do foco e da
+ * árvore de acessibilidade, mas guarda a rolagem para quando a pessoa voltar.
+ * Nenhum ancestral pode ter `transform`/`filter`/`contain` — isso quebraria o
+ * `fixed`; o e2e `atender-pelo-celular` mede o topo.
  */
+const CAMADA_DA_CONVERSA = [
+  "max-md:fixed max-md:inset-x-0 max-md:z-[45] max-md:bg-background",
+  "max-md:top-[max(var(--vv-topo,0px),var(--faixas-de-cima,0px))]",
+  "max-md:h-[calc(var(--vv-topo,0px)+var(--vv-altura,100dvh)-max(var(--vv-topo,0px),var(--faixas-de-cima,0px)))]",
+  "max-md:pt-[env(safe-area-inset-top)] max-md:pb-[env(safe-area-inset-bottom)] max-md:data-[teclado-aberto]:pb-0",
+].join(" ");
+
 export function colunasDoCelular(temSelecao: boolean): { lista: string; conversa: string } {
   return {
-    lista: temSelecao ? "hidden md:flex" : "flex",
-    conversa: temSelecao ? "flex" : "hidden md:flex",
+    lista: temSelecao ? "max-md:invisible flex" : "flex",
+    conversa: temSelecao ? `flex ${CAMADA_DA_CONVERSA}` : "hidden md:flex",
   };
 }
 
@@ -412,6 +437,9 @@ export function InboxLayout({
     needsFetch && !single.isPending && !single.data && isNotFound(single.error);
 
   const colunas = colunasDoCelular(Boolean(selectedId));
+  // O teclado do celular, medido só com conversa aberta (ver `colunasDoCelular`).
+  const conversaRef = useRef<HTMLDivElement | null>(null);
+  const tecladoAberto = useAlturaVisivel(conversaRef, Boolean(selectedId));
 
   const claim = useClaimConversation();
   const close = useCloseConversation();
@@ -801,8 +829,10 @@ export function InboxLayout({
         voltar, porque ele morava dentro do ramo da conversa carregada.
       */}
       <div
+        ref={conversaRef}
+        data-teclado-aberto={tecladoAberto ? "" : undefined}
         className={cn(
-          "h-full min-h-0 min-w-0 flex-col md:flex",
+          "h-full min-h-0 min-w-0 flex-col md:flex group/conversa",
           colunas.conversa,
         )}
       >
@@ -817,7 +847,7 @@ export function InboxLayout({
             <Button
               variant="ghost"
               size="sm"
-              className="h-9 gap-1 px-2"
+              className="gap-1 px-2"
               onClick={() => handleSelect(null)}
             >
               <CaretLeft size={16} />
@@ -827,7 +857,7 @@ export function InboxLayout({
             {selectedConversation && (
               <Sheet open={fichaAberta} onOpenChange={setFichaAberta}>
                 <SheetTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-9 gap-1 px-2 xl:hidden">
+                  <Button variant="ghost" size="sm" className="gap-1 px-2 xl:hidden">
                     <IdentificationCard size={16} />
                     {t("Ficha")}
                   </Button>
