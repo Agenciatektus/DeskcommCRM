@@ -634,8 +634,18 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       }
     }
     if (e.key === "Enter" && !e.shiftKey) {
+      if (menuOpen) {
+        e.preventDefault(); // deixa o Enter pro menu; não envia /query como mensagem
+        return;
+      }
+      // No toque, a tecla de retorno do teclado virtual QUEBRA LINHA, como no
+      // próprio WhatsApp — quem envia é o botão. Ctrl/Cmd+Enter envia sempre
+      // (iPad com teclado físico). Lido aqui, no keydown, e não no render: o
+      // servidor não sabe o ponteiro, e ler no render faria as duas pontas
+      // desenharem coisas diferentes.
+      const forcaEnvio = e.ctrlKey || e.metaKey;
+      if (!forcaEnvio && window.matchMedia?.("(pointer: coarse)").matches) return;
       e.preventDefault();
-      if (menuOpen) return; // deixa o Enter pro menu; não envia /query como mensagem
       handleSubmit();
     }
   }
