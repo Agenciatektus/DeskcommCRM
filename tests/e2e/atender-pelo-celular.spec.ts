@@ -630,7 +630,10 @@ test.describe("atender pelo celular", () => {
       expect(r.status()).toBe(200);
       expect(r.headers()["content-type"]).toBe("audio/mp4");
       expect(r.headers()["cache-control"]).toContain("no-store");
-      const corpo = await r.body();
+      // O corpo é lido por um pedido PRÓPRIO, na mesma sessão: o Chromium não
+      // guarda para o Playwright o corpo que a página consome como `blob()`, e
+      // `r.body()` voltava vazio com o player tocando os 20s (medido na prova).
+      const corpo = await (await page.request.get(r.url())).body();
       // Caixa `ftyp` nos bytes 4..8: é MP4 de verdade, não o ogg devolvido.
       expect(corpo.subarray(4, 8).toString("latin1"), "a resposta não é MP4").toBe("ftyp");
       await expect
