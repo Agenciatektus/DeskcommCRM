@@ -497,6 +497,23 @@ describe("H: o preparo automático na lista", () => {
     expect(within(modal).queryByText(/Verificado em/)).toBeNull();
   });
 
+  it("veredito sem-site GRAVADO também não mostra data: vereditoPuro não abre conexão", async () => {
+    // A cura de site-enrich.ts grava o sem-site com o instante do UPDATE; a prova
+    // de tela de 21/10 mostrou "Verificado em 21/10/2026" numa empresa sem site.
+    const semSiteGravado = { ...SITE_OK, classe: "sem-site", checklist: { tem: [], falta: [] }, final_url: null, http_status: null, tempo_ms: 0 };
+    api.get.mockImplementation(async () => {
+      const f = fixture();
+      f.candidates[1] = candidato("c2", COMPLETA, empresa("Sem site nenhum", null, semSiteGravado));
+      return { data: f };
+    });
+    openPage();
+    const linha = await screen.findByRole("row", { name: /Sem site nenhum/ });
+    fireEvent.click(within(linha).getByRole("button", { name: "Ver detalhes" }));
+    const modal = await screen.findByRole("dialog");
+    expect(within(modal).getByText("Sem site próprio")).toBeVisible();
+    expect(within(modal).queryByText(/Verificado em/)).toBeNull();
+  });
+
   it("o botão manual 'Prévia da abordagem' continua no detalhe", async () => {
     openPage();
     const linha = await screen.findByRole("row", { name: /Com site saudável/ });

@@ -14,7 +14,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/hooks/i18n/useT";
 import { AuditoriaDoSite } from "@/components/prospecting/AuditoriaDoSite";
-import { descreverProblema } from "@/lib/prospecting/site-classify";
+import { descreverProblema, type ClasseDeSite } from "@/lib/prospecting/site-classify";
 import { siteEfetivo } from "@/lib/prospecting/site-efetivo";
 import {
   pontuarCandidato,
@@ -24,6 +24,9 @@ import {
   type Pontuacao,
 } from "@/lib/prospecting/estrategia-site";
 import type { Prospect } from "@/lib/prospecting/schema";
+
+/** Classes que `vereditoPuro` resolve sem rede: não há verificação a datar. */
+const SEM_REDE: ReadonlySet<ClasseDeSite> = new Set(["sem-site", "agregador"]);
 
 export interface PreviaDaAbordagem {
   mensagem: string;
@@ -93,9 +96,11 @@ export function AuditoriaDoCandidato({
   const mostraMotivo = score.motivo !== rotulo && score.motivo.toLowerCase() !== rotulo.toLowerCase();
   const auditoria = (
     <AuditoriaDoSite
-      // Só o veredito GRAVADO tem data: o derivado (sem site) leva o instante
-      // da leitura, e "Verificado em <hoje>" afirmaria uma verificação que não houve.
-      site={data.site ? site : { ...site, verificado_em: undefined }}
+      // Só tem data o veredito que veio da REDE. O derivado (sem site) leva o
+      // instante da leitura, e o gravado de sem-site/agregador é `vereditoPuro`
+      // (site-classify.ts), que nunca abre conexão — "Verificado em <data>"
+      // afirmaria uma verificação que não houve.
+      site={data.site && !SEM_REDE.has(site.classe) ? site : { ...site, verificado_em: undefined }}
       nota={data.rating}
       numAvaliacoes={data.reviews}
       temInstagram={temInstagram}
