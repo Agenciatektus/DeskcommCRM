@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { orgAtivaDaApi, requireRole } from "@/lib/auth/require-role";
-import { loadAuthUser, mfaEmDividaEstrita, orgAtivaSemPortao } from "@/lib/auth/server";
+import { loadAuthUser, mfaEmDivida, orgAtivaSemPortao } from "@/lib/auth/server";
 import { audit } from "@/lib/audit";
 import { createClient } from "@/lib/supabase/server";
 import type { AuthUser, Role } from "@/lib/auth/types";
@@ -18,7 +18,6 @@ vi.mock("@/lib/auth/server", () => ({
   // Sessão sem dívida de MFA: esta suíte mede rank de papel; o gate de segundo
   // fator tem suíte própria em tests/unit/require-role-mfa.test.ts.
   mfaEmDivida: vi.fn(async () => false),
-  mfaEmDividaEstrita: vi.fn(async () => false),
   loadAuthUser: vi.fn(),
   orgAtivaSemPortao: vi.fn(),
 }));
@@ -237,23 +236,13 @@ describe("org não operante e scope do platform admin (spec cobrança §4 item 4
     if (!res.ok) expect((await res.response.json()).error.code).toBe("forbidden_role");
   });
 
-  it("allowPlatformAdmin:true com full sem o código provado → 403 mfa_required", async () => {
-    // Sem a prova forte o atalho não vale e o platform admin cai no rank do
-    // tenant; aqui ele é viewer, então a recusa continua sendo de MFA.
+  it("allowPlatformAdmin:true com full e MFA em dívida → 403 mfa_required", async () => {
     session("viewer", { platformAdmin: true });
-    vi.mocked(mfaEmDividaEstrita).mockResolvedValueOnce(true);
+    vi.mocked(mfaEmDivida).mockResolvedValueOnce(true);
     const res = await requireRole("admin", { allowPlatformAdmin: true });
     expect(res.ok).toBe(false);
     if (!res.ok) expect((await res.response.json()).error.code).toBe("mfa_required");
-  });
-
-  it("allowPlatformAdmin:true sem o código provado, mas ADMIN da própria org → passa pelo rank", async () => {
-    // O dono da instalação num dispositivo confiável: sem poder de plataforma,
-    // mas admin da empresa dele — e a sessão está provada para o tenant.
-    session("admin", { platformAdmin: true });
-    vi.mocked(mfaEmDividaEstrita).mockResolvedValueOnce(true);
-    const res = await requireRole("admin", { allowPlatformAdmin: true });
-    expect(res.ok).toBe(true);
+    expect(createClient).not.toHaveBeenCalled();
   });
 
   it("allowPlatformAdmin:'leitura' libera support_readonly", async () => {

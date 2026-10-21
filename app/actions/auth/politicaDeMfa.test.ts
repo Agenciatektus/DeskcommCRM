@@ -16,6 +16,7 @@ vi.mock("@/lib/auth/server", async (importOriginal) => {
   return { ...real, loadAuthUser: vi.fn(), resolveActiveOrg: vi.fn() };
 });
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+vi.mock("@/lib/auth/poder-de-plataforma", () => ({ agindoPeloPoderDePlataforma: vi.fn(async () => false) }));
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 const deps = vi.hoisted(() => ({ update: vi.fn(), audit: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ audit: deps.audit }));

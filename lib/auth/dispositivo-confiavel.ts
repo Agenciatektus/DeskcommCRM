@@ -24,8 +24,8 @@ import { cookieSecure } from "@/lib/supabase/cookie-secure";
  *
  * O que continua pedindo o código mesmo num dispositivo confiável: desligar a
  * própria verificação, trocar a senha (o GoTrue exige `aal2`) e o poder de
- * PLATAFORMA — a área `/admin`, a escrita de admin da plataforma e o atalho de
- * `requireRole` que age em qualquer organização (`mfaEmDividaEstrita`).
+ * PLATAFORMA — `/admin/**` e extensões da instalação (`mfaEmDividaEstrita`), e
+ * o admin da plataforma agindo numa empresa onde não é admin (`mfaEmDivida`).
  *
  * A confiança é do FATOR, não só da pessoa: remover o fator por qualquer caminho
  * (desligar, código de recuperação, script de suporte) a invalida no banco.

@@ -10,6 +10,7 @@ import { combinarInterfaces } from "@/lib/navigation/interface";
  */
 import { readSupportContext } from "@/lib/impersonate/support";
 import { cookies } from "next/headers";
+import { agindoPeloPoderDePlataforma } from "@/lib/auth/poder-de-plataforma";
 import { redirect } from "next/navigation";
 import { logger } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
@@ -580,6 +581,7 @@ export async function mfaEmDivida(): Promise<boolean> {
   // Cadastrar e provar são perguntas diferentes. Quem TEM fator prova, sempre.
   if (!(await isMfaEnrolled())) return false;
   if ((await sessionAal()) === "aal2") return false;
+  if (await agindoPeloPoderDePlataforma()) return true;
   // `aal1` com fator: só o banco sabe se esta sessão foi reconhecida por um
   // dispositivo confiável (`lib/auth/dispositivo-confiavel.ts`). Pergunta à
   // MESMA função que as definer cobram, para app e banco não divergirem — e
@@ -592,9 +594,9 @@ export async function mfaEmDivida(): Promise<boolean> {
 
 /**
  * A mesma dívida, SEM aceitar dispositivo confiável: quem tem fator precisa do
- * `aal2` do GoTrue, o código provado nesta sessão. É a régua do poder de
- * PLATAFORMA — escrita de admin da plataforma e o atalho de `requireRole` que
- * age em qualquer organização —, onde um cookie roubado valeria todos os tenants.
+ * `aal2` do GoTrue, o código provado nesta sessão. É a régua das rotas da
+ * PLATAFORMA cuja organização vem do path (`/admin/**`, extensões da
+ * instalação), onde a organização ativa não diz nada sobre o alvo.
  */
 export async function mfaEmDividaEstrita(): Promise<boolean> {
   if (!(await isMfaEnrolled())) return false;

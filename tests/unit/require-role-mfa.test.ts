@@ -17,12 +17,14 @@ import { requireRole } from "@/lib/auth/require-role";
 import { loadAuthUser, orgAtivaSemPortao, resolveActiveOrg } from "@/lib/auth/server";
 import type { AuthUser, Role } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
+import { agindoPeloPoderDePlataforma } from "@/lib/auth/poder-de-plataforma";
 
 vi.mock("@/lib/auth/server", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/auth/server")>();
   return { ...real, loadAuthUser: vi.fn(), resolveActiveOrg: vi.fn(), orgAtivaSemPortao: vi.fn() };
 });
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+vi.mock("@/lib/auth/poder-de-plataforma", () => ({ agindoPeloPoderDePlataforma: vi.fn(async () => false) }));
 vi.mock("@/lib/audit", () => ({
   audit: vi.fn(async () => undefined),
   isServiceRoleConfigured: () => false,
@@ -113,6 +115,22 @@ describe("requireRole — MFA é política de sessão, não de cadastro", () => 
   it("sessão aal1 que o BANCO reconhece por dispositivo confiável PASSA", async () => {
     preparar({ role: "admin", temFator: true, aal: "aal1", confiavel: true });
     const r = await requireRole("admin", { requestId: "req-3" });
+    expect(r.ok).toBe(true);
+  });
+
+  it("dispositivo confiável NÃO abre poder de plataforma: platform admin que é viewer aqui é barrado", async () => {
+    preparar({ role: "viewer", temFator: true, aal: "aal1", isPlatformAdmin: true, confiavel: true });
+    vi.mocked(agindoPeloPoderDePlataforma).mockResolvedValueOnce(true);
+    const r = await requireRole("admin", { allowPlatformAdmin: true });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect((await r.response.json()).error.code).toBe("mfa_required");
+  });
+
+  it("o dono da instalação, ADMIN da própria empresa, usa a confiança nela", async () => {
+    preparar({ role: "admin", temFator: true, aal: "aal1", isPlatformAdmin: true, confiavel: true });
+    // `agindoPeloPoderDePlataforma` responde false para quem é admin da org ativa
+    // (medido em lib/auth/poder-de-plataforma.test.ts).
+    const r = await requireRole("admin", { allowPlatformAdmin: true });
     expect(r.ok).toBe(true);
   });
 

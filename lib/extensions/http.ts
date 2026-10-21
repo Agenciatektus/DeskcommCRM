@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { fail } from "@/lib/api/wrappers";
-import { loadAuthUser, mfaEmDivida, sessionAal } from "@/lib/auth/server";
+import { loadAuthUser, mfaEmDividaEstrita, sessionAal } from "@/lib/auth/server";
 import type { AuthUser } from "@/lib/auth/types";
 import { traduzir } from "@/lib/i18n/dicionario";
 import type { Idioma } from "@/lib/i18n/idiomas";
@@ -59,7 +59,7 @@ export async function regraPlatformAdmin(user: AuthUser): Promise<RegraPlatformA
     .maybeSingle();
   if (error) return { ok: false, codigo: "upstream_unavailable" };
   if (!platform || platform.scope !== "full") return { ok: false, codigo: "forbidden" };
-  if ((platform.mfa_required && (await sessionAal()) !== "aal2") || (await mfaEmDivida())) {
+  if ((platform.mfa_required && (await sessionAal()) !== "aal2") || (await mfaEmDividaEstrita())) {
     return { ok: false, codigo: "mfa_required" };
   }
   return { ok: true, user };

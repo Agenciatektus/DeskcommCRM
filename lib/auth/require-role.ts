@@ -29,7 +29,7 @@ import type { NextResponse } from "next/server";
 import { fail, type ApiError } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { CODIGO_ORG_DIVERGENTE, HEADER_ORG_DA_ABA } from "@/lib/auth/org-da-aba";
-import { loadAuthUser, mfaEmDivida, mfaEmDividaEstrita, orgAtivaSemPortao } from "@/lib/auth/server";
+import { loadAuthUser, mfaEmDivida, orgAtivaSemPortao } from "@/lib/auth/server";
 import { ROLE_RANK, type ActiveOrg, type AuthUser, type Role } from "@/lib/auth/types";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { STATUS_OPERANTE, ehOperante } from "@/lib/organizacao/operante";
@@ -215,17 +215,21 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
     return { ok: false, response: orgSuspensa(user, requestId) };
   }
 
-  // O atalho age em QUALQUER organização, então só vale com o código provado
-  // nesta sessão (`mfaEmDividaEstrita`): dispositivo confiável não abre poder de
-  // plataforma. Sem a prova forte, o platform admin segue como membro comum
-  // desta organização — o dono da instalação, que é admin da própria empresa,
-  // continua trabalhando nela —, e onde nem membro ele é a recusa é de MFA.
-  let atalhoSemProvaForte = false;
   if (user.is_platform_admin && !user.support && allowPlatformAdmin !== false) {
     if (allowPlatformAdmin === "leitura") return { ok: true, user, org };
     if (user.platform_admin_scope === "full") {
-      if (!(await mfaEmDividaEstrita())) return { ok: true, user, org };
-      atalhoSemProvaForte = true;
+      if (await mfaEmDivida()) {
+        void audit({
+          action: "authz.denied",
+          actorUserId: user.id,
+          organizationId: org.orgId,
+          resourceType: resource ?? null,
+          requestId,
+          metadata: { reason: "mfa_required", via: "platform_admin" },
+        });
+        return { ok: false, response: fail("mfa_required", t(MENSAGEM_DE_MFA), 403, { requestId }) };
+      }
+      return { ok: true, user, org };
     }
     // `support_readonly` com `true`: sem atalho — segue para o rank do tenant.
   }
@@ -267,18 +271,6 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
     if ("error" in mfa) throw mfa.error;
     mfaRequired = mfa.required;
   }
-  if (atalhoSemProvaForte && rank < ROLE_RANK[min]) {
-    void audit({
-      action: "authz.denied",
-      actorUserId: user.id,
-      organizationId: org.orgId,
-      resourceType: resource ?? null,
-      requestId,
-      metadata: { reason: "mfa_required", via: "platform_admin" },
-    });
-    return { ok: false, response: fail("mfa_required", t(MENSAGEM_DE_MFA), 403, { requestId }) };
-  }
-
   if (mfaRequired) {
     void audit({
       action: "authz.denied",
