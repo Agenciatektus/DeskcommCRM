@@ -17,7 +17,6 @@ import { requireRole } from "@/lib/auth/require-role";
 import { loadAuthUser, orgAtivaSemPortao, resolveActiveOrg } from "@/lib/auth/server";
 import type { AuthUser, Role } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
-import { agindoPeloPoderDePlataforma } from "@/lib/auth/poder-de-plataforma";
 
 vi.mock("@/lib/auth/server", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/auth/server")>();
@@ -120,8 +119,20 @@ describe("requireRole — MFA é política de sessão, não de cadastro", () => 
 
   it("dispositivo confiável NÃO abre poder de plataforma: platform admin que é viewer aqui é barrado", async () => {
     preparar({ role: "viewer", temFator: true, aal: "aal1", isPlatformAdmin: true, confiavel: true });
-    vi.mocked(agindoPeloPoderDePlataforma).mockResolvedValueOnce(true);
     const r = await requireRole("admin", { allowPlatformAdmin: true });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect((await r.response.json()).error.code).toBe("mfa_required");
+  });
+
+  it("alvo pelo path numa org onde o platform admin NÃO é membro: confiança não basta", async () => {
+    // O cookie aponta para a empresa dele (admin), mas o alvo é outra.
+    preparar({ role: "admin", temFator: true, aal: "aal1", isPlatformAdmin: true, confiavel: true });
+    const r = await requireRole("admin", {
+      allowPlatformAdmin: true,
+      organizationId: "33333333-3333-4333-8333-333333333333",
+      // Sem filiação não há status lido; o caso mede MFA, não suspensão.
+      permiteOrgSuspensa: true,
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) expect((await r.response.json()).error.code).toBe("mfa_required");
   });
