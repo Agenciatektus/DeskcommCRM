@@ -275,14 +275,16 @@ export const crmProposeContactField: McpToolDefinition<typeof propostaShape> = {
           resourceType: "contact",
           resourceId: input.contact_id,
           requestId: ctx.requestId,
-          // O que a issue pede que o registro diga: quem propôs, o trecho que
-          // o cliente escreveu, quando — e o par antes/depois da L-06.
+          // Quem aplicou, quando e o par antes/depois da L-06 — SEM o `trecho`.
+          // A auditoria não é alcançada pela anonimização (só sai pela retenção),
+          // e o trecho é texto livre do cliente: numa clínica pode trazer dado de
+          // saúde. Ele vai para a linha da timeline, que a cascata da LGPD limpa
+          // (`registrarTelefoneAplicadoNaTimeline`).
           metadata: {
             ...a.metadataActor,
             campo: input.campo,
             old_value: null,
             new_value: r.telefone,
-            trecho: input.trecho ?? null,
             automatico: true,
             legal_basis: "L-05 transactional (dado informado pelo titular em atendimento iniciado por ele)",
           },

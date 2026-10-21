@@ -503,6 +503,9 @@ describe("#2593: o telefone informado pelo cliente", () => {
     // O NÚMERO legível para quem opera: é o que a issue pede que apareça.
     expect(String(a.reason)).toContain("+5511999998888");
     expect(a.payload).toMatchObject({ campo: "phone_number", telefone: "+5511999998888" });
+    // O TRECHO que o cliente escreveu mora AQUI, e não na auditoria: esta
+    // linha a anonimização limpa; a auditoria ela não alcança.
+    expect(a.payload).toMatchObject({ trecho: "meu número é (11) 99999-8888" });
   });
 
   it("sem negócio aberto não há linha possível — e a ausência não derruba a gravação", async () => {

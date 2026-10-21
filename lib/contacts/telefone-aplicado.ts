@@ -134,9 +134,10 @@ export async function registrarTelefoneAplicadoNaTimeline(
       // O NÚMERO fica legível para quem opera: é ele que o item 2 do CR pede
       // que apareça. A coluna é coberta pela cascata da LGPD
       // (`fn_lgpd_cascade_redact_contact` faz `update` nesta tabela), então
-      // telefone aqui não sobrevive a um pedido de esquecimento.
+      // telefone aqui não sobrevive a um pedido de esquecimento — e por isso o
+      // `trecho` que o cliente escreveu mora AQUI, e não na auditoria.
       reason: `Número aplicado na ficha pelo assistente: ${p.telefone}`,
-      payload: { campo: "phone_number", telefone: p.telefone, automatico: true },
+      payload: { campo: "phone_number", telefone: p.telefone, automatico: true, trecho: p.trecho ?? null },
     });
 
     if (!r.ok) {
