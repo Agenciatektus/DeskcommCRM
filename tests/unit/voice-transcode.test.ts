@@ -28,6 +28,8 @@ import { describe, expect, it, vi } from "vitest";
 import { extFromMime } from "@/lib/messaging/media/types";
 import { validateOutboundMedia } from "@/lib/messaging/media/upload-validation";
 import {
+  CONVERSOES_SIMULTANEAS,
+  ConversorOcupado,
   VOICE_MIME,
   TETO_REPRODUCAO_BYTES,
   paraReproducaoAac,
@@ -232,6 +234,37 @@ describe("paraReproducaoAac", () => {
       throw new Error("ffmpeg_exit_1");
     });
     await expect(paraReproducaoAac(Buffer.from("ogg"), { run })).rejects.toThrow();
+  });
+
+  it("acima de CONVERSOES_SIMULTANEAS no processo recusa com ConversorOcupado, e a vaga volta ao terminar", async () => {
+    const soltar: Array<() => void> = [];
+    const run = vi.fn(
+      (args: string[], _cwd: string) =>
+        new Promise<void>((resolve) => {
+          soltar.push(async () => {
+            const { writeFile } = await import("node:fs/promises");
+            await writeFile(args[args.length - 1]!, Buffer.from("mp4"));
+            resolve();
+          });
+        }),
+    );
+    const emCurso = Array.from({ length: CONVERSOES_SIMULTANEAS }, () => paraReproducaoAac(Buffer.from("ogg"), { run }));
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(CONVERSOES_SIMULTANEAS));
+
+    await expect(paraReproducaoAac(Buffer.from("ogg"), { run })).rejects.toBeInstanceOf(ConversorOcupado);
+    expect(run).toHaveBeenCalledTimes(CONVERSOES_SIMULTANEAS);
+
+    for (const s of soltar) s();
+    await Promise.all(emCurso);
+    // A vaga volta mesmo quando o ffmpeg falha.
+    await expect(
+      paraReproducaoAac(Buffer.from("ogg"), { run: async () => { throw new Error("ffmpeg_exit_1"); } }),
+    ).rejects.toThrow("ffmpeg_exit_1");
+    const depois = vi.fn(async (args: string[], _cwd: string) => {
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(args[args.length - 1]!, Buffer.from("mp4"));
+    });
+    await expect(paraReproducaoAac(Buffer.from("ogg"), { run: depois })).resolves.toBeInstanceOf(Buffer);
   });
 
   it("saída vazia também rejeita", async () => {

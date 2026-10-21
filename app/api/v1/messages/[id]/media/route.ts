@@ -21,7 +21,7 @@ import { loadAuthUser } from "@/lib/auth/server";
 import { orgAtivaDaApi } from "@/lib/auth/require-role";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { logger } from "@/lib/logger";
-import { TETO_REPRODUCAO_BYTES, paraReproducaoAac } from "@/lib/messaging/media/voice-transcode";
+import { ConversorOcupado, TETO_REPRODUCAO_BYTES, paraReproducaoAac } from "@/lib/messaging/media/voice-transcode";
 import {
   CHANNEL_SESSION_REF_COLUMNS,
   DEFAULT_CHANNEL_PROVIDER,
@@ -47,6 +47,8 @@ const Consulta = z.object({ formato: z.enum(["aac"]).optional() });
 const TETO_CONVERSAO_POR_USUARIO = 30;
 const TETO_CONVERSAO_POR_ORGANIZACAO = 120;
 const JANELA_CONVERSAO_S = 60;
+/** Conversor do processo cheio: uma conversão leva poucos segundos. */
+const ESPERA_CONVERSOR_OCUPADO_S = 5;
 
 /** O que o Safari antigo não toca e o ffmpeg sabe abrir. O resto já toca. */
 const AUDIO_CONVERTIVEL = new Set(["audio/ogg", "audio/webm", "audio/opus"]);
@@ -275,6 +277,12 @@ async function converterParaTocar(
   try {
     aac = await paraReproducaoAac(bytes);
   } catch (err) {
+    if (err instanceof ConversorOcupado) {
+      return fail("conversor_ocupado", t("Muitos áudios sendo preparados agora. Tente em alguns segundos."), 503, {
+        requestId,
+        headers: { "Retry-After": String(ESPERA_CONVERSOR_OCUPADO_S) },
+      });
+    }
     logger.error("messages.media.conversao_aac_falhou", {
       erro: err instanceof Error ? err.message : String(err),
     });

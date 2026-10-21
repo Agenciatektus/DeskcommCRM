@@ -10851,6 +10851,7 @@ export const DICIONARIO: Traducoes = {
   "Campo 'nota_de_voz' inválido.": { es: "Campo 'nota_de_voz' inválido." },
   "Formato não suportado: use ?formato=aac.": { es: "Formato no admitido: use ?formato=aac." },
   "Muitas conversões de áudio seguidas. Tente em um minuto.": { es: "Demasiadas conversiones de audio seguidas. Inténtelo en un minuto." },
+  "Muitos áudios sendo preparados agora. Tente em alguns segundos.": { es: "Se están preparando muchos audios ahora. Inténtelo en unos segundos." },
   "Formato de áudio não suportado.": { es: "Formato de audio no admitido." },
   "Não foi possível preparar o áudio para este aparelho.": { es: "No fue posible preparar el audio para este dispositivo." },
   "Campo 'name' inválido (2-120 chars).": { es: "Campo 'name' inválido (2-120 caracteres)." },

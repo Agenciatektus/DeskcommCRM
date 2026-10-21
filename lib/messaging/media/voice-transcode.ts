@@ -65,6 +65,22 @@ const MAX_BYTES = 16 * 1024 * 1024;
  */
 export const TETO_REPRODUCAO_BYTES = 5 * 1024 * 1024;
 
+/**
+ * Quantas conversões para TOCAR rodam ao mesmo tempo neste processo. O teto
+ * por minuto da rota não basta: 120 por organização com 30s de prazo cada
+ * cabem dezenas de ffmpeg juntos, disputando a CPU com o próprio Next.
+ */
+export const CONVERSOES_SIMULTANEAS = 2;
+let conversoesEmCurso = 0;
+
+/** Conversor cheio: é espera, não defeito. A rota responde 503 com `Retry-After`. */
+export class ConversorOcupado extends Error {
+  constructor() {
+    super("conversor_ocupado");
+    this.name = "ConversorOcupado";
+  }
+}
+
 /** Prazo de qualquer ffmpeg daqui: sem ele, um arquivo patológico prende o processo. */
 const PRAZO_FFMPEG_MS = 30_000;
 
@@ -174,17 +190,21 @@ export async function transcodificarNotaDeVoz(
  * não toca seria responder 200 com um arquivo mudo. Quem chama responde 502.
  *
  * ponytail: converte a cada toque (CPU da VPS, com teto de 30/min por pessoa
- * na rota). Se o custo pesar, guardar a cópia no Storage — mas só com o
- * expurgo e a anonimização cobrindo a cópia, provados por teste.
+ * na rota e `CONVERSOES_SIMULTANEAS` por processo — contador em memória, que
+ * vale por réplica do app). Se o custo pesar, guardar a cópia no Storage — mas
+ * só com o expurgo e a anonimização cobrindo a cópia, provados por teste.
  */
 export async function paraReproducaoAac(
   buffer: Buffer,
   deps: { run?: typeof runFfmpeg } = {},
 ): Promise<Buffer> {
   if (buffer.length > TETO_REPRODUCAO_BYTES) throw new Error("audio_grande_demais");
+  if (conversoesEmCurso >= CONVERSOES_SIMULTANEAS) throw new ConversorOcupado();
   const executar = deps.run ?? runFfmpeg;
-  const dir = await mkdtemp(join(tmpdir(), "tocar-"));
+  conversoesEmCurso++;
+  let dir: string | null = null;
   try {
+    dir = await mkdtemp(join(tmpdir(), "tocar-"));
     const entrada = join(dir, "in.audio");
     const saida = join(dir, "out.m4a");
     await writeFile(entrada, buffer);
@@ -196,6 +216,7 @@ export async function paraReproducaoAac(
     if (convertido.length === 0) throw new Error("ffmpeg_saida_vazia");
     return convertido;
   } finally {
-    await rm(dir, { recursive: true, force: true }).catch(() => {});
+    conversoesEmCurso--;
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }

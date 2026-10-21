@@ -179,6 +179,16 @@ describe("?formato=aac", () => {
     expect(await codigo(r)).toBe("conversao_indisponivel");
   });
 
+  it("503 com Retry-After quando o conversor do processo está cheio — espera, não defeito", async () => {
+    const { ConversorOcupado } = await vi.importActual<typeof VoiceTranscode>("@/lib/messaging/media/voice-transcode");
+    converter.mockRejectedValue(new ConversorOcupado());
+    const r = await pedir("aac");
+    expect(r.status).toBe(503);
+    expect(r.headers.get("retry-after")).toBe("5");
+    expect(r.headers.get("x-request-id")).toBeTruthy();
+    expect(await codigo(r)).toBe("conversor_ocupado");
+  });
+
   it("sem ?formato a rota segue como sempre: 302 para a URL assinada, sem converter", async () => {
     const r = await pedir();
     expect(r.status).toBe(302);
