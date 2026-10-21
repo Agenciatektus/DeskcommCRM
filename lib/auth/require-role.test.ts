@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { orgAtivaDaApi, requireRole } from "@/lib/auth/require-role";
-import { loadAuthUser, mfaEmDivida, mfaEmDividaEstrita, orgAtivaSemPortao } from "@/lib/auth/server";
+import { loadAuthUser, mfaEmDividaEstrita, orgAtivaSemPortao } from "@/lib/auth/server";
 import { audit } from "@/lib/audit";
 import { createClient } from "@/lib/supabase/server";
 import type { AuthUser, Role } from "@/lib/auth/types";
