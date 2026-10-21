@@ -239,11 +239,15 @@ async function pedacosDeDocumento(fonte: FonteRow): Promise<Pedaco[]> {
 
 /** Catálogo: os produtos já sincronizados desta organização. */
 async function pedacosDeCatalogo(fonte: FonteRow, productId?: string): Promise<Pedaco[]> {
+  // SEM `productId` = o catálogo INTEIRO. A assinatura já previa os dois casos
+  // e o segundo devolvia `[]`, então a loja recém-conectada ficava com uma
+  // fonte de catálogo vazia: só entrava produto que alguém editasse depois.
+  // Medido numa loja real: 879 produtos publicados, zero no acervo.
   const produtos = productId
     ? [await buscarProdutoNaLoja(fonte.organization_id, productId)].filter(
         (p): p is NuvemshopProduct => p !== null,
       )
-    : [];
+    : await listarCatalogoDaLoja(fonte.organization_id);
 
   const pedacos: Pedaco[] = [];
   for (const p of produtos) {
@@ -282,6 +286,72 @@ async function buscarProdutoNaLoja(
   }
 }
 
+/**
+ * O catálogo inteiro, para a carga inicial de uma loja recém-conectada.
+ *
+ * Paginado, com teto BAIXO de propósito. O limite real não é a API: é o reaper
+ * do drain, que devolve à fila evento em `processing` há mais de 10 minutos. Os
+ * embeddings são sequenciais, um por pedaço, e cada produto rende um ou dois —
+ * a 200-400 ms por chamada, 2 mil produtos já consomem a janela inteira. Passar
+ * dela não deixa a carga lenta: faz DOIS workers indexarem a mesma fonte, com o
+ * embedding pago em dobro e corrida na ativação da versão.
+ *
+ * Por isso 10 páginas (2 mil produtos), e o que passar disso FALHA com a conta
+ * na mensagem, em vez de virar catálogo pela metade publicado como completo.
+ * Loja maior precisa de carga com cursor entre execuções, que é trabalho
+ * próprio e está registrado como tal.
+ */
+/** 10 páginas de 200 = 2 mil produtos. Ver o porquê do teto acima. */
+const TETO_DE_PAGINAS = 10;
+
+async function listarCatalogoDaLoja(organizationId: string): Promise<NuvemshopProduct[]> {
+  const creds = await credenciaisDaLoja(organizationId);
+  if (!creds) {
+    console.warn("[rag-indexer] loja não conectada para a org", organizationId);
+    return [];
+  }
+  const client = new NuvemshopApiClient({
+    storeId: creds.storeId,
+    accessToken: creds.accessToken,
+  });
+  const todos: NuvemshopProduct[] = [];
+  for (let pagina = 1; pagina <= TETO_DE_PAGINAS; pagina += 1) {
+    let lote: NuvemshopProduct[];
+    try {
+      lote = await client.get<NuvemshopProduct[]>(`/products?per_page=200&page=${pagina}`);
+    } catch (err) {
+      // ERRO SOBE, e não `break`.
+      //
+      // O `break` fazia pior do que parecia: com a página 1 falhando (429, 5xx,
+      // rede), `[]` é indistinguível de "loja sem produtos" e o evento era
+      // marcado consumido para sempre; com uma página do meio falhando, um
+      // catálogo truncado era ATIVADO como se estivesse completo, e o
+      // `content_hash` do truncado fazia a carga seguinte ser pulada por
+      // "sem_mudanca". Não existe "próxima sincronização completa o resto": o
+      // único emissor de carga inteira é a conexão.
+      //
+      // Deixando subir, o drain reagenda com backoff e, no limite, abre aviso
+      // crítico. Barulho é o desfecho certo aqui.
+      throw new Error(
+        `catálogo incompleto: página ${pagina} falhou (${
+          err instanceof Error ? err.message : String(err)
+        })`,
+      );
+    }
+    if (!Array.isArray(lote) || lote.length === 0) return todos;
+    todos.push(...lote);
+    if (lote.length < 200) return todos;
+  }
+  // Chegou ao teto com a página cheia: há mais loja do que esta carga alcança.
+  // Devolver o que veio publicaria um catálogo truncado como se fosse a loja
+  // inteira, e o `content_hash` do truncado faria a carga seguinte ser pulada
+  // por "sem_mudanca" — o erro que se conserta sozinho nunca, porque ninguém vê.
+  throw new Error(
+    `catálogo maior que o teto desta carga: ${todos.length} produtos em ${TETO_DE_PAGINAS} páginas. ` +
+      "Loja desse tamanho precisa de carga com cursor entre execuções.",
+  );
+}
+
 async function credenciaisDaLoja(
   organizationId: string,
 ): Promise<{ accessToken: string; storeId: string } | null> {
@@ -289,10 +359,15 @@ async function credenciaisDaLoja(
 
   const { data, error } = await admin
     .from("tenant_integrations")
-    .select("id, organization_id, provider, store_metadata")
+    .select("id, organization_id, provider, store_metadata, oauth_access_token_encrypted")
     .eq("organization_id", organizationId)
     .eq("provider", "nuvemshop")
-    .eq("status", "active")
+    // `healthy`, e não `active`: o CHECK de `tenant_integrations` aceita
+    // connecting | healthy | token_expired | scope_missing | disconnected |
+    // rate_limited | error. `active` NUNCA existiu, então este filtro devolvia
+    // zero linhas para toda organização — e, com credencial nula, o catálogo
+    // não tinha como ser lido nem que todo o resto estivesse certo.
+    .eq("status", "healthy")
     .maybeSingle();
 
   if (error || !data) return null;
@@ -301,10 +376,22 @@ async function credenciaisDaLoja(
   const storeId = String(meta["store_id"] ?? meta["id"] ?? "");
   if (!storeId) return null;
 
-  const { data: decrypted, error: decErr } = await admin.rpc("fn_decrypt_oauth" as never, {
-    p_organization_id: organizationId,
-    p_integration_id: (data as { id: string }).id,
-  } as never);
+  // `fn_decrypt_oauth(ciphertext bytea)` — UM argumento, e é o texto cifrado.
+  //
+  // Aqui se pedia `p_organization_id` e `p_integration_id`, que não existem em
+  // assinatura nenhuma: o PostgREST devolvia "função não encontrada", a
+  // credencial voltava nula e o catálogo ficava vazio pelo mesmo silêncio que
+  // esta correção veio matar — um nível abaixo. Quem escondeu isso do
+  // compilador foi o `as never`, por isso ele saiu junto.
+  //
+  // O mesmo padrão está em `webhooks/nuvemshop/[event]/route.ts` e em
+  // `lib/webhooks/secrets.ts`.
+  const cifrado = (data as { oauth_access_token_encrypted: string | null })
+    .oauth_access_token_encrypted;
+  if (!cifrado) return null;
+  const { data: decrypted, error: decErr } = await admin.rpc("fn_decrypt_oauth", {
+    ciphertext: cifrado,
+  });
 
   if (decErr || !decrypted) return null;
   const accessToken = String(decrypted);
@@ -514,11 +601,32 @@ async function fonteDoEvento(row: EventRow): Promise<{
     return { fonte, ...(fonte ? {} : { motivo: "fonte_nao_encontrada" }) };
   }
 
-  // nuvemshop.product_synced
+  // nuvemshop.product_synced — um produto, ou a loja inteira.
+  //
+  // `catalogo_inteiro` é a carga inicial, emitida quando a loja acaba de
+  // conectar: ali não existe produto nenhum em mãos, e exigir `product_id`
+  // deixava a conexão nova com um acervo vazio até alguém editar um produto.
+  const catalogoInteiro = row.payload["catalogo_inteiro"] === true;
   const productId = String(row.payload["product_id"] ?? "");
-  if (!productId) return { fonte: null, motivo: "evento_sem_product_id" };
+  if (!productId && !catalogoInteiro) return { fonte: null, motivo: "evento_sem_product_id" };
   const fonte = await garantirFonteDeCatalogo(row.organization_id);
-  return { fonte, productId, ...(fonte ? {} : { motivo: "fonte_de_catalogo_indisponivel" }) };
+  // ── A VERSÃO ATIVA DO CATÁLOGO NUNCA PODE ENCOLHER ───────────────────────
+  //
+  // `indexarFonte` cria uma versão com os pedaços que receber e a ATIVA, e
+  // `activateVersion` desliga a anterior; a busca só enxerga o ponteiro ativo
+  // (`fn_buscar_trechos_das_fontes` filtra `c.kb_version_id =
+  // s.active_kb_version_id`). Indexar UM produto na fonte do catálogo
+  // publicaria uma versão com um item só, e os outros ficariam invisíveis ao
+  // agente — a loja inteira apagada pela edição de um preço, sem erro nenhum.
+  //
+  // Por isso todo evento de produto reindexa o catálogo inteiro. O debounce
+  // junta a rajada de quem edita vários produtos seguidos. Indexação
+  // incremental de verdade (herdar os pedaços da versão ativa e trocar só os do
+  // produto tocado) é o desenho que economiza embedding, e é trabalho próprio.
+  //
+  // `product_id` segue no payload de propósito: o log do turno diz qual edição
+  // disparou a carga.
+  return { fonte, ...(fonte ? {} : { motivo: "fonte_de_catalogo_indisponivel" }) };
 }
 
 /**
