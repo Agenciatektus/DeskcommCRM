@@ -307,19 +307,16 @@ describe("sincronizarAgendaDoCelular", () => {
       expect(n, `cliques: ${numeros}`).toBeLessThan(6);
     }
 
-    // 500 + 500 + 500, cada um numa faixa NOVA da agenda: nenhum voltou ao zero.
-    expect(cliques.map((c) => c.importados)).toEqual([500, 500, 500]);
-    expect(cliques.map((c) => c.offset)).toEqual([0, 500, 1000]);
+    // A TABELA dos cliques, medida: cada passada começa onde a anterior parou,
+    // grava 500, e o último fecha a conta (truncado false, sem cursor).
+    expect(cliques).toEqual([
+      { offset: 0, lidos: 1000, importados: 500, ja_existentes: 0, truncado: true, proximo_offset: 500 },
+      { offset: 500, lidos: 1000, importados: 500, ja_existentes: 0, truncado: true, proximo_offset: 1000 },
+      { offset: 1000, lidos: 500, importados: 500, ja_existentes: 0, truncado: false, proximo_offset: null },
+    ]);
     // Os 1.500 entraram UMA vez cada — sem repetir e sem parar no milésimo.
     expect(f.upserts).toHaveLength(TOTAL);
     expect(new Set(f.upserts.map((u) => u.telefone)).size).toBe(TOTAL);
-    // O último clique fecha a conta com truncado false (e sem cursor pendente).
-    expect(cliques.at(-1)).toMatchObject({
-      truncado: false,
-      proximo_offset: null,
-      importados: 500,
-      lidos: 500,
-    });
     // A 11ª leitura (a primeira do SEGUNDO clique) é a linha 500, não a zero:
     // é isto que faltava e que deixava os 500 do fim inalcançáveis.
     expect(f.offsets.slice(0, 11)).toEqual([0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 500]);
