@@ -129,6 +129,16 @@ export interface Transcodificacao {
   convertido: boolean;
 }
 
+/**
+ * Só os contêineres de áudio que este módulo recebe, lidos só do arquivo local:
+ * o ffmpeg não adivinha o formato de entrada por conta própria. Vai ANTES do
+ * `-i`, em toda chamada daqui.
+ */
+export const ENTRADA_ACEITA = [
+  "-protocol_whitelist", "file",
+  "-format_whitelist", "ogg,matroska,webm,mov,mp4,m4a,3gp,3g2,mj2",
+] as const;
+
 /** Roda ffmpeg; rejeita se sair diferente de zero. Injetável para teste. */
 async function runFfmpeg(args: string[], cwd: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -178,7 +188,7 @@ export async function transcodificarNotaDeVoz(
     const codec = ehWebm(baseDoMime(input.mime))
       ? ["-c:a", "copy"]
       : ["-c:a", "libopus", "-b:a", "24k", "-ac", "1", "-ar", "48000"];
-    await executar(["-i", entrada, "-vn", ...codec, "-f", "ogg", saida], dir);
+    await executar([...ENTRADA_ACEITA, "-i", entrada, "-vn", ...codec, "-f", "ogg", saida], dir);
     const buffer = await readFile(saida);
     if (buffer.length === 0) return { buffer: input.buffer, mime: input.mime, convertido: false };
     return { buffer, mime: VOICE_MIME, convertido: true };
@@ -226,7 +236,7 @@ export async function paraReproducaoAac(
     const saida = join(dir, "out.m4a");
     await writeFile(entrada, buffer);
     await executar(
-      ["-i", entrada, "-vn", "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", "-f", "mp4", saida],
+      [...ENTRADA_ACEITA, "-i", entrada, "-vn", "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", "-f", "mp4", saida],
       dir,
     );
     const convertido = await readFile(saida);

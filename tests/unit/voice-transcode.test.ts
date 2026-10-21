@@ -29,6 +29,7 @@ import { extFromMime } from "@/lib/messaging/media/types";
 import { validateOutboundMedia } from "@/lib/messaging/media/upload-validation";
 import {
   CONVERSOES_POR_ORGANIZACAO,
+  ENTRADA_ACEITA,
   CONVERSOES_SIMULTANEAS,
   ConversorOcupado,
   VOICE_MIME,
@@ -212,6 +213,31 @@ describe("nota de voz gravada no iPhone (F2)", () => {
  * servidor converte NA HORA para AAC em MP4 e não guarda nada — a cópia
  * derivada escaparia do expurgo e da anonimização.
  */
+/** A lista de formatos aceitos vem inteira e antes do `-i`; depois dele ela não vale para a entrada. */
+function listaAntesDaEntrada(args: string[]): void {
+  const i = args.indexOf("-i");
+  expect(i).toBeGreaterThan(0);
+  const antes = args.slice(0, i);
+  for (let k = 0; k < ENTRADA_ACEITA.length; k += 2) {
+    const flag = ENTRADA_ACEITA[k]!;
+    expect(antes, `${flag} antes do -i`).toContain(flag);
+    expect(antes[antes.indexOf(flag) + 1]).toBe(ENTRADA_ACEITA[k + 1]);
+  }
+}
+
+describe("o ffmpeg só lê os formatos de áudio esperados", () => {
+  it("nota de voz e conversão para tocar passam a lista antes do -i", async () => {
+    const run = vi.fn(async (args: string[], _cwd: string) => {
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(args[args.length - 1]!, Buffer.from("x"));
+    });
+    await transcodificarNotaDeVoz({ buffer: Buffer.from("m4a"), mime: "audio/mp4", notaDeVoz: true }, { run });
+    await paraReproducaoAac(Buffer.from("ogg"), "org-lista", { run });
+    expect(run).toHaveBeenCalledTimes(2);
+    for (const [args] of run.mock.calls) listaAntesDaEntrada(args);
+  });
+});
+
 describe("paraReproducaoAac", () => {
   it("converte para AAC em MP4 com faststart e devolve os bytes", async () => {
     const run = vi.fn(async (args: string[], _cwd: string) => {
