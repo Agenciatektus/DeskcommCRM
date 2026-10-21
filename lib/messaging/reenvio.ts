@@ -16,10 +16,14 @@
  * integração já têm quem tente de novo (o motor do agente tem o próprio
  * ledger), e um reenvio humano por cima sairia em dobro.
  */
+import { isMediaPathOwnedBy } from "@/lib/messaging/media/upload-validation";
+
 export type TipoDeReenvio = "seguro" | "confirmar" | "nenhum";
 
 /** O recorte de `Message` que a regra lê — a linha do banco e a da tela cabem nele. */
 export interface MensagemDoReenvio {
+  organization_id: string;
+  conversation_id: string;
   direction: string;
   sent_via: string;
   sent_by_user_id: string | null;
@@ -74,7 +78,13 @@ export function reenvioDaMensagem(
   const conteudoReenviavel =
     msg.type === "text"
       ? Boolean(msg.body)
-      : TIPOS_DE_MIDIA.has(msg.type) && Boolean(msg.media_storage_path) && meta.media_status !== "expired";
+      : TIPOS_DE_MIDIA.has(msg.type) &&
+        // O envio só aceita arquivo da pasta desta conversa (`isMediaPathOwnedBy`
+        // no handler). Mídia de outro lugar — o PDF de uma proposta, por exemplo —
+        // seria um botão que sempre recusa.
+        Boolean(msg.media_storage_path) &&
+        isMediaPathOwnedBy(msg.media_storage_path ?? "", msg.organization_id, msg.conversation_id) &&
+        meta.media_status !== "expired";
   if (!conteudoReenviavel) return "nenhum";
 
   if (msg.status === "failed") {

@@ -7,6 +7,8 @@ const minutosAtras = (n: number) => new Date(AGORA.getTime() - n * 60_000).toISO
 
 function msg(over: Partial<MensagemDoReenvio> = {}): MensagemDoReenvio {
   return {
+    organization_id: "org",
+    conversation_id: "conv",
     direction: "outbound",
     sent_via: "user",
     sent_by_user_id: "eu",
@@ -94,6 +96,13 @@ describe("reenvioDaMensagem", () => {
     expect(reenvioDaMensagem(msg({ ...midia, media_storage_path: "org/conv/a.jpg" }), agente)).toBe("seguro");
     expect(reenvioDaMensagem(msg({ ...midia, media_storage_path: null }), agente)).toBe("nenhum");
     expect(reenvioDaMensagem(msg({ ...midia, media_storage_path: "org/conv/a.jpg", metadata: { media_status: "expired" } }), agente)).toBe("nenhum");
+  });
+
+  it("mídia fora da pasta da conversa (ex.: PDF de proposta): nenhum, porque o envio a recusaria", () => {
+    const midia = { type: "document", body: null, error_code: "channel_disabled" };
+    expect(reenvioDaMensagem(msg({ ...midia, media_storage_path: "propostas/org/p1.pdf" }), agente)).toBe("nenhum");
+    expect(reenvioDaMensagem(msg({ ...midia, media_storage_path: "org/outra-conv/a.pdf" }), agente)).toBe("nenhum");
+    expect(reenvioDaMensagem(msg({ ...midia, media_storage_path: "org/conv/a.pdf" }), agente)).toBe("seguro");
   });
 
   it.each(["template", "contact", "location"])("tipo %s: nenhum", (type) => {
