@@ -8980,8 +8980,6 @@
   "Tudo o que se liga e desliga, se está ligado e onde se ajusta.": "Everything that turns on and off, whether it's on, and where to adjust it.",
   "Cadastrar como campo do lead": "Add as a lead field",
   "Texto longo": "Long text",
-  "Link": "Link",
-  "Sim/Não": "Yes/No",
   "Não foi possível ler o funil desta fonte.": "Couldn't read this source's pipeline.",
   "Não foi possível cadastrar o campo. Só quem administra o funil pode fazer isso.": "Couldn't add the field. Only someone who manages the pipeline can do that.",
   "Campo cadastrado. Ele já aparece no card do lead e pode ser usado nas mensagens.": "Field added. It already shows on the lead card and can be used in messages.",
