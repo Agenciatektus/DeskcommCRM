@@ -416,11 +416,11 @@ describe("MessageBubble — mensagem que falhou", () => {
 
   it("o texto cru do canal não aparece na linha visível", () => {
     render(<MessageBubble message={msg({
-      status: "failed", error_code: "waha_error", error_message: "fetch failed http://waha:3000/api/sendText",
+      status: "failed", error_code: "canal_x_error", error_message: "fetch failed http://servico-interno:3000/api/sendText",
       sent_by_user_id: "eu",
     })} viewerUserId="eu" />);
     expect(screen.getByTestId("motivo-da-falha")).not.toHaveTextContent("http");
-    expect(document.body.textContent).not.toContain("http://waha");
+    expect(document.body.textContent).not.toContain("http://servico-interno");
   });
 
   it("código sem frase cai na frase genérica", () => {

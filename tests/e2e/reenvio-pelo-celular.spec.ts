@@ -180,8 +180,7 @@ test.describe("reenvio pelo celular", () => {
     const motivo = b.getByTestId("motivo-da-falha");
     await expect(motivo).toHaveText("Este número está desativado. Reative em Conexões para enviar.");
     const textoDaBolha = (await b.innerText()).toLowerCase();
-    expect(textoDaBolha, "código do canal à vista").not.toContain("channel_disabled");
-    expect(textoDaBolha).not.toContain("waha");
+    expect(textoDaBolha, "código do canal à vista").not.toMatch(/channel_disabled|_error/);
     expect(textoDaBolha, "endereço interno à vista").not.toContain("http");
 
     const botao = tentarDeNovo(b);
